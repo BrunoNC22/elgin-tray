@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use elgin_application::config::{Settings, toggle_autostart};
 use elgin_application::controller::{BulbController, DEFAULT_MIN_SEND_INTERVAL};
+use elgin_application::hotkeys::{HotkeyAction, hotkey_command};
 use elgin_application::ports::{
     AutostartRegistrar, BulbConnector, BulbDiscovery, BulbEvent, BulbObserver, Clock, CloudAccount,
     ConfigRepository, ControllerEvent,
@@ -245,6 +246,15 @@ where
     }
 
     /// Clique, rolagem ou item de menu na bandeja. `anchor` é onde o ícone está na tela.
+    /// Um atalho global foi apertado.
+    pub(crate) async fn on_hotkey(&mut self, action: HotkeyAction) {
+        let snapshot = self.controller.snapshot();
+        if let Some(command) = hotkey_command(action, &snapshot, &self.settings.config().favorites)
+        {
+            let _ = self.controller.execute(command).await;
+        }
+    }
+
     pub(crate) async fn on_tray_action(
         &mut self,
         action: TrayAction,
@@ -827,6 +837,20 @@ mod tests {
 
         tokio::time::sleep(DEFAULT_MIN_SEND_INTERVAL).await;
         f.core.on_tray_action(TrayAction::MiddleClick, None).await;
+        assert_eq!(lamp.state().power, Power::Off);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn hotkeys_control_the_bulb() {
+        let mut f = configured();
+        let lamp = FakeBulbGateway::new(white(40));
+        online(&mut f, &lamp).await;
+
+        f.core.on_hotkey(HotkeyAction::BrightnessUp).await;
+        assert_eq!(lamp.state(), white(50));
+
+        tokio::time::sleep(DEFAULT_MIN_SEND_INTERVAL).await;
+        f.core.on_hotkey(HotkeyAction::Toggle).await;
         assert_eq!(lamp.state().power, Power::Off);
     }
 

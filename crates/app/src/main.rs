@@ -17,7 +17,10 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use elgin_application::config::{Settings, apply_autostart};
+use elgin_application::config::{HotkeyBindings, Settings, apply_autostart};
+use elgin_application::hotkeys::HotkeyAction;
+#[cfg(windows)]
+use elgin_application::hotkeys::register_hotkeys;
 use elgin_application::ports::AutostartRegistrar;
 use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
@@ -197,6 +200,8 @@ async fn serve(
             Err(error) => log::warn!("não foi possível aplicar o autostart: {error}"),
         }
     }
+    let (hotkey_sender, hotkey_events) = mpsc::unbounded_channel();
+    let _hotkeys = start_hotkeys(&settings.config().hotkeys, hotkey_sender);
     let (requests_sender, requests) = mpsc::unbounded_channel();
     let (snapshots_sender, snapshots) = watch::channel(None);
     let (shutdown_sender, shutdown) = watch::channel(false);
@@ -220,7 +225,7 @@ async fn serve(
             shutdown,
         },
     ));
-    daemon::run(core, requests, tray_events, tray, async {
+    daemon::run(core, requests, tray_events, hotkey_events, tray, async {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await;
@@ -240,6 +245,29 @@ fn autostart_registrar() -> Result<impl AutostartRegistrar, String> {
     elgin_platform_linux::DesktopAutostart::for_current_exe()
         .map_err(|error| format!("pasta de autostart: {error}"))
 }
+
+/// Registra os atalhos globais do config; os apertados chegam por `sender`. O valor devolvido
+/// precisa ficar vivo enquanto o daemon roda. Atalho inválido ou já usado vai para o log.
+#[cfg(windows)]
+fn start_hotkeys(
+    bindings: &HotkeyBindings,
+    sender: mpsc::UnboundedSender<HotkeyAction>,
+) -> Option<elgin_platform_windows::WindowsHotkeys> {
+    let started = elgin_platform_windows::WindowsHotkeys::start(move |action| {
+        let _ = sender.send(action);
+    });
+    let mut hotkeys = started
+        .inspect_err(|error| log::warn!("atalhos globais desligados: {error}"))
+        .ok()?;
+    for problem in register_hotkeys(bindings, &mut hotkeys) {
+        log::warn!("{problem}");
+    }
+    Some(hotkeys)
+}
+
+/// Os atalhos do KDE chegam na #35.
+#[cfg(not(windows))]
+fn start_hotkeys(_bindings: &HotkeyBindings, _sender: mpsc::UnboundedSender<HotkeyAction>) {}
 
 fn finish(result: Result<(), String>, log_path: Option<PathBuf>) -> ExitCode {
     match result {

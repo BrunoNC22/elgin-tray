@@ -7,6 +7,7 @@ mod panel;
 use std::future::Future;
 use std::time::Instant;
 
+use elgin_application::hotkeys::HotkeyAction;
 use elgin_application::ports::{
     AutostartRegistrar, BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository,
 };
@@ -32,12 +33,14 @@ pub(crate) trait TrayOutput {
     fn show(&mut self, view: &TrayViewModel);
 }
 
-/// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis e
-/// as ações da bandeja, e mostra na bandeja cada mudança, até "Sair" ou `exit` terminar.
+/// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis,
+/// as ações da bandeja e os atalhos globais, e mostra na bandeja cada mudança, até "Sair" ou `exit`
+/// terminar.
 pub(crate) async fn run<R, K, D, C, P, A, T>(
     mut core: DaemonCore<R, K, D, C, P, A>,
     mut requests: mpsc::UnboundedReceiver<PanelMessage>,
     mut tray_events: mpsc::UnboundedReceiver<TrayEvent>,
+    mut hotkeys: mpsc::UnboundedReceiver<HotkeyAction>,
     tray: &mut T,
     exit: impl Future<Output = ()>,
 ) where
@@ -67,6 +70,7 @@ pub(crate) async fn run<R, K, D, C, P, A, T>(
                     break;
                 }
             }
+            Some(action) = hotkeys.recv() => core.on_hotkey(action).await,
             () = &mut exit => break,
         }
     }

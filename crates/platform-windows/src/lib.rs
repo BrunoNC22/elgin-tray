@@ -5,5 +5,7 @@
 #![cfg(windows)]
 
 mod autostart;
+mod hotkeys;
 
 pub use autostart::{HkcuRunKey, RunKey, WindowsAutostart};
+pub use hotkeys::WindowsHotkeys;

@@ -9,6 +9,7 @@ mod cloud;
 mod config;
 mod connection;
 mod gateway;
+mod hotkeys;
 mod observer;
 
 pub use autostart::SpyAutostart;
@@ -17,4 +18,5 @@ pub use cloud::StubCloudAccount;
 pub use config::FakeConfigRepository;
 pub use connection::{ConnectAttempt, ScriptedEvents, StubConnector, StubDiscovery};
 pub use gateway::FakeBulbGateway;
+pub use hotkeys::SpyHotkeys;
 pub use observer::SpyObserver;

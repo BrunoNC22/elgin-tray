@@ -11,6 +11,7 @@
 pub mod config;
 pub mod controller;
 pub mod credentials;
+pub mod hotkeys;
 pub mod ports;
 pub mod setup;
 pub mod status;

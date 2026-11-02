@@ -67,3 +67,21 @@ local_key = "a local key (16 caracteres)"
 O IP e a versão do protocolo são descobertos sozinhos e gravados no arquivo. A descoberta precisa
 **receber** pacotes UDP da lâmpada: no Windows, permita o `elgin-tray.exe` no firewall quando o aviso
 aparecer (redes privadas). Sem isso, preencha `ip` e `protocol_version = "3.5"` à mão.
+
+## Atalhos globais
+
+Os atalhos ficam no `config.toml` (os valores abaixo são os padrões):
+
+```toml
+[hotkeys]
+toggle = "Ctrl+Alt+L"           # liga/desliga
+brightness_up = "Ctrl+Alt+Up"   # brilho +10%
+brightness_down = "Ctrl+Alt+Down"
+next_favorite = "Ctrl+Alt+Right"
+```
+
+Cada atalho é uma ou mais modificadoras (`Ctrl`, `Alt`, `Shift`, `Win`) e uma tecla: `A`–`Z`,
+`0`–`9`, `F1`–`F24`, `Up`, `Down`, `Left`, `Right`, `Space`, `Enter`, `Tab`, `Home`, `End`,
+`PageUp`, `PageDown`, `Insert`, `Delete`. Deixe vazio (`""`) para desligar um atalho. Atalhos
+inválidos ou já usados por outro programa ficam de fora (o motivo vai para o log) e os outros
+continuam funcionando. As mudanças valem ao reiniciar o app.

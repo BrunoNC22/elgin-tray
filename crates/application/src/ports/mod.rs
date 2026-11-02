@@ -6,6 +6,7 @@ mod cloud;
 mod config;
 mod connection;
 mod gateway;
+mod hotkeys;
 mod observer;
 
 pub use autostart::AutostartRegistrar;
@@ -14,4 +15,5 @@ pub use cloud::{CloudAccount, CloudDevice, CloudDevices, CloudError, LoginPoll, 
 pub use config::{ConfigError, ConfigRepository};
 pub use connection::{BulbConnector, BulbDiscovery, BulbEvent, BulbEvents};
 pub use gateway::{BulbGateway, GatewayError};
+pub use hotkeys::HotkeyRegistrar;
 pub use observer::{BulbObserver, ControllerEvent};
