@@ -20,8 +20,6 @@ pub(crate) trait PanelProcess {
 }
 
 /// Abre o painel se está fechado; fecha se está aberto (clique no ícone).
-// Usado pela bandeja (#24).
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn toggle<P: PanelProcess>(panel: &mut P, anchor: Option<Anchor>) -> io::Result<()> {
     if panel.is_open() {
         panel.close();

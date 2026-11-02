@@ -43,6 +43,7 @@ socket2 = "0.6"
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 tokio = { version = "1", default-features = false }
 toml = "1"
+tray-icon = "0.26"
 ureq = "3"
 windows-sys = "0.61"
 

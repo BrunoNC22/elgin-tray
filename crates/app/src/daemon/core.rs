@@ -14,6 +14,9 @@ use elgin_application::status::ConnectionStatus;
 use elgin_application::supervisor::{
     ConnectionSupervisor, ConnectionTarget, RetryPolicy, SupervisorEvent,
 };
+use elgin_application::tray::{
+    MenuAction, TrayAction, TrayInputs, TrayViewModel, UpdatePolicy, command_for, present,
+};
 use elgin_domain::{FavoriteColour, FavoriteSlot};
 use elgin_ipc::messages::{PanelMessage, SetupRequestDto, SnapshotDto};
 use tokio::sync::watch;
@@ -34,6 +37,14 @@ impl BulbObserver for NoopObserver {
     fn notify(&mut self, _event: &ControllerEvent) {}
 }
 
+/// O que fazer depois de uma ação da bandeja.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TrayOutcome {
+    Continue,
+    /// O usuário escolheu "Sair".
+    Quit,
+}
+
 type Controller<K> = BulbController<<K as BulbConnector>::Gateway, NoopObserver, TokioClock>;
 
 pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P> {
@@ -48,6 +59,7 @@ pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P> {
     recovery_retry_at: Option<Instant>,
     panel: P,
     snapshots: watch::Sender<Option<SnapshotDto>>,
+    update_policy: UpdatePolicy,
 }
 
 impl<R, K, D, C, P> DaemonCore<R, K, D, C, P>
@@ -65,6 +77,7 @@ where
         cloud: C,
         panel: P,
         snapshots: watch::Sender<Option<SnapshotDto>>,
+        update_policy: UpdatePolicy,
     ) -> Self {
         let mut core = Self {
             settings,
@@ -78,6 +91,7 @@ where
             recovery_retry_at: None,
             panel,
             snapshots,
+            update_policy,
         };
         core.connect_to_primary_bulb();
         core.publish();
@@ -179,10 +193,65 @@ where
     }
 
     /// Clique no ícone: abre ou fecha o painel.
-    // Usado pela bandeja (#24).
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn toggle_panel(&mut self, anchor: Option<Anchor>) {
         if let Err(error) = panel::toggle(&mut self.panel, anchor) {
+            log::warn!("não foi possível abrir o painel: {error}");
+        }
+    }
+
+    /// O que a bandeja deve mostrar agora.
+    pub(crate) fn tray_view(&self) -> TrayViewModel {
+        let config = self.settings.config();
+        present(&TrayInputs {
+            bulb_name: config.primary_bulb().map(|bulb| bulb.name.as_str()),
+            snapshot: &self.controller.snapshot(),
+            favorites: &config.favorites,
+            autostart: config.autostart.unwrap_or(false),
+            update_policy: self.update_policy,
+            // A verificação de atualizações chega na #38.
+            available_update: None,
+            app_version: env!("CARGO_PKG_VERSION"),
+        })
+    }
+
+    /// Clique, rolagem ou item de menu na bandeja. `anchor` é onde o ícone está na tela.
+    pub(crate) async fn on_tray_action(
+        &mut self,
+        action: TrayAction,
+        anchor: Option<Anchor>,
+    ) -> TrayOutcome {
+        let snapshot = self.controller.snapshot();
+        if let Some(command) = command_for(action, &snapshot, &self.settings.config().favorites) {
+            let _ = self.controller.execute(command).await;
+        }
+        match action {
+            TrayAction::Click => self.toggle_panel(anchor),
+            TrayAction::Menu(MenuAction::OpenPanel) => self.open_panel(anchor),
+            TrayAction::Menu(MenuAction::Configure) => {
+                self.on_setup_request(SetupRequestDto::Open).await;
+                self.open_panel(anchor);
+            }
+            TrayAction::Menu(MenuAction::ToggleAutostart) => {
+                // O registro no sistema (Run do Windows / autostart do Linux) chega na #33.
+                let enabled = !self.settings.config().autostart.unwrap_or(false);
+                if let Err(error) = self.settings.set_autostart(enabled) {
+                    log::warn!("não foi possível salvar a preferência de autostart: {error}");
+                }
+            }
+            TrayAction::Menu(MenuAction::CheckUpdates | MenuAction::ShowUpdate) => {
+                log::info!("verificação de atualizações ainda não implementada (#38)");
+            }
+            TrayAction::Menu(MenuAction::Quit) => return TrayOutcome::Quit,
+            TrayAction::MiddleClick
+            | TrayAction::Scroll(_)
+            | TrayAction::Menu(MenuAction::TogglePower | MenuAction::ApplyFavorite(_)) => {}
+        }
+        self.publish();
+        TrayOutcome::Continue
+    }
+
+    fn open_panel(&mut self, anchor: Option<Anchor>) {
+        if let Err(error) = panel::ensure_open(&mut self.panel, anchor) {
             log::warn!("não foi possível abrir o painel: {error}");
         }
     }
@@ -401,6 +470,7 @@ mod tests {
             cloud.clone(),
             FakePanel::default(),
             sender,
+            UpdatePolicy::AutoInstall,
         );
         Fixture {
             core,
@@ -666,6 +736,84 @@ mod tests {
             LocalKey::new("chave-sala-00000")
         );
         assert_eq!(f.connector.attempts()[0].endpoint, endpoint(33));
+    }
+
+    async fn online(f: &mut Fixture, lamp: &FakeBulbGateway) {
+        f.connector.succeed_with(lamp.clone());
+        f.settle().await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_tray_view_follows_the_bulb() {
+        let mut f = configured();
+        assert_eq!(
+            f.core.tray_view().icon,
+            elgin_application::tray::IconSpec::Unavailable(
+                elgin_application::tray::Indicator::Warning
+            )
+        );
+
+        online(&mut f, &FakeBulbGateway::new(white(40))).await;
+
+        let view = f.core.tray_view();
+        assert!(matches!(
+            view.icon,
+            elgin_application::tray::IconSpec::On(_)
+        ));
+        assert_eq!(view.tooltip, "Quarto — ligada, 40%");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tray_clicks_and_scrolls_control_the_bulb_and_the_panel() {
+        let mut f = configured();
+        let lamp = FakeBulbGateway::new(white(40));
+        online(&mut f, &lamp).await;
+        let anchor = Anchor {
+            x: 1,
+            y: 2,
+            width: 3,
+            height: 4,
+        };
+
+        assert_eq!(
+            f.core.on_tray_action(TrayAction::Click, Some(anchor)).await,
+            TrayOutcome::Continue
+        );
+        assert_eq!(f.core.panel.opened_with, [Some(anchor)]);
+
+        f.core.on_tray_action(TrayAction::Scroll(2), None).await;
+        assert_eq!(lamp.state(), white(50));
+
+        tokio::time::sleep(DEFAULT_MIN_SEND_INTERVAL).await;
+        f.core.on_tray_action(TrayAction::MiddleClick, None).await;
+        assert_eq!(lamp.state().power, Power::Off);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tray_menu_items_do_their_job() {
+        let mut f = configured();
+        online(&mut f, &FakeBulbGateway::new(white(40))).await;
+
+        f.core
+            .on_tray_action(TrayAction::Menu(MenuAction::ToggleAutostart), None)
+            .await;
+        assert_eq!(f.repository.saved().unwrap().autostart, Some(true));
+
+        f.core
+            .on_tray_action(TrayAction::Menu(MenuAction::Configure), None)
+            .await;
+        assert!(f.core.panel.open);
+        assert_eq!(
+            f.snapshot().setup,
+            Some(elgin_ipc::messages::SetupStateDto::AwaitingUserCode)
+        );
+
+        assert_eq!(
+            f.core
+                .on_tray_action(TrayAction::Menu(MenuAction::Quit), None)
+                .await,
+            TrayOutcome::Quit
+        );
     }
 
     #[tokio::test(start_paused = true)]

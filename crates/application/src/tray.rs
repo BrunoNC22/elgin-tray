@@ -91,6 +91,38 @@ pub enum MenuAction {
     Quit,
 }
 
+impl MenuAction {
+    /// Identificador estável do item (as bandejas dos sistemas usam texto).
+    pub fn id(self) -> String {
+        match self {
+            Self::TogglePower => "toggle_power".to_owned(),
+            Self::ApplyFavorite(slot) => format!("favorite:{}", slot.index()),
+            Self::OpenPanel => "open_panel".to_owned(),
+            Self::Configure => "configure".to_owned(),
+            Self::ToggleAutostart => "autostart".to_owned(),
+            Self::CheckUpdates => "check_updates".to_owned(),
+            Self::ShowUpdate => "show_update".to_owned(),
+            Self::Quit => "quit".to_owned(),
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        Some(match id {
+            "toggle_power" => Self::TogglePower,
+            "open_panel" => Self::OpenPanel,
+            "configure" => Self::Configure,
+            "autostart" => Self::ToggleAutostart,
+            "check_updates" => Self::CheckUpdates,
+            "show_update" => Self::ShowUpdate,
+            "quit" => Self::Quit,
+            other => {
+                let index = other.strip_prefix("favorite:")?.parse().ok()?;
+                Self::ApplyFavorite(FavoriteSlot::try_new(index).ok()?)
+            }
+        })
+    }
+}
+
 /// Interação com o ícone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayAction {
@@ -566,6 +598,34 @@ mod tests {
             command_for(TrayAction::Scroll(1), &offline, &Favorites::default()),
             None
         );
+    }
+
+    #[test]
+    fn menu_action_ids_round_trip() {
+        let actions = [
+            MenuAction::TogglePower,
+            MenuAction::ApplyFavorite(FavoriteSlot::try_new(5).unwrap()),
+            MenuAction::OpenPanel,
+            MenuAction::Configure,
+            MenuAction::ToggleAutostart,
+            MenuAction::CheckUpdates,
+            MenuAction::ShowUpdate,
+            MenuAction::Quit,
+        ];
+        for action in actions {
+            assert_eq!(
+                MenuAction::from_id(&action.id()),
+                Some(action),
+                "{}",
+                action.id()
+            );
+        }
+        assert_eq!(
+            MenuAction::ApplyFavorite(FavoriteSlot::try_new(2).unwrap()).id(),
+            "favorite:2"
+        );
+        assert_eq!(MenuAction::from_id("favorite:9"), None);
+        assert_eq!(MenuAction::from_id("outro"), None);
     }
 
     #[test]

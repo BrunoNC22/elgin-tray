@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use elgin_application::config::Settings;
+use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
 use elgin_ipc::session::DaemonChannels;
 use elgin_ipc::transport::{self, Instance};
@@ -27,6 +28,13 @@ use tokio::sync::{mpsc, watch};
 
 use crate::args::{CtlCommand, Mode, USAGE};
 use crate::daemon::{ChildPanel, DaemonCore};
+
+/// Como as atualizações chegam: no Windows o app instala sozinho; no Linux (pacote AUR) só avisa.
+const UPDATE_POLICY: UpdatePolicy = if cfg!(windows) {
+    UpdatePolicy::AutoInstall
+} else {
+    UpdatePolicy::NotifyOnly
+};
 
 /// Variável de ambiente para usar outro `config.toml` (desenvolvimento e testes manuais).
 const CONFIG_OVERRIDE: &str = "ELGIN_TRAY_CONFIG";
@@ -57,49 +65,156 @@ fn main() -> ExitCode {
     }
 }
 
+/// No Windows a bandeja precisa do loop de mensagens na thread principal: o daemon roda numa thread
+/// própria e conversa com a bandeja pelo [`elgin_tray_windows::SharedView`].
+#[cfg(windows)]
+fn run_daemon() -> ExitCode {
+    use std::sync::{Arc, Mutex};
+
+    let log_path = logging::init();
+    log::info!("elgin-tray {} iniciando", env!("CARGO_PKG_VERSION"));
+    let shared: elgin_tray_windows::SharedView = Arc::new(Mutex::new(None));
+    let (tray_sender, tray_events) = mpsc::unbounded_channel();
+    let (waker_sender, waker_receiver) = std::sync::mpsc::channel();
+    let (started_sender, started) = std::sync::mpsc::channel();
+
+    let daemon_shared = Arc::clone(&shared);
+    let daemon = std::thread::spawn(move || {
+        block_on_local(async move {
+            let Some(listener) = claim_instance().await? else {
+                let _ = started_sender.send(false);
+                return Ok(());
+            };
+            let _ = started_sender.send(true);
+            let waker: elgin_tray_windows::TrayWaker = waker_receiver
+                .recv()
+                .map_err(|_| "a bandeja não iniciou".to_owned())?;
+            let mut tray = WindowsTray {
+                shared: daemon_shared,
+                waker,
+            };
+            let result = serve(listener, tray_events, &mut tray).await;
+            waker.quit();
+            result
+        })
+    });
+
+    let tray_result = match started.recv() {
+        Ok(true) => elgin_tray_windows::run(
+            shared,
+            move |action, rect| {
+                let anchor = rect.map(|rect| daemon::Anchor {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                });
+                let _ = tray_sender.send(daemon::TrayEvent { action, anchor });
+            },
+            move |waker| {
+                let _ = waker_sender.send(waker);
+            },
+        ),
+        _ => Ok(()),
+    };
+    let daemon_result = daemon
+        .join()
+        .unwrap_or_else(|_| Err("a thread do daemon falhou".to_owned()));
+    finish(tray_result.and(daemon_result), log_path)
+}
+
+/// A bandeja do Windows vista pelo daemon: guarda o estado e acorda o loop de mensagens.
+#[cfg(windows)]
+struct WindowsTray {
+    shared: elgin_tray_windows::SharedView,
+    waker: elgin_tray_windows::TrayWaker,
+}
+
+#[cfg(windows)]
+impl daemon::TrayOutput for WindowsTray {
+    fn show(&mut self, view: &elgin_application::tray::TrayViewModel) {
+        if let Ok(mut shared) = self.shared.lock() {
+            *shared = Some(view.clone());
+        }
+        self.waker.refresh();
+    }
+}
+
+/// No Linux a bandeja do KDE chega na #25; até lá o daemon roda sem ícone.
+#[cfg(not(windows))]
 fn run_daemon() -> ExitCode {
     let log_path = logging::init();
     log::info!("elgin-tray {} iniciando", env!("CARGO_PKG_VERSION"));
     let result = block_on_local(async {
-        let listener = match transport::claim()
-            .await
-            .map_err(|error| format!("não foi possível abrir o canal local: {error}"))?
-        {
-            Instance::Primary(listener) => listener,
-            Instance::AlreadyRunning => {
-                log::info!("já havia um elgin-tray rodando; pedido para abrir o painel enviado");
-                return Ok(());
-            }
+        let Some(listener) = claim_instance().await? else {
+            return Ok(());
         };
-        let settings = load_settings()?;
-        let (requests_sender, requests) = mpsc::unbounded_channel();
-        let (snapshots_sender, snapshots) = watch::channel(None);
-        let (shutdown_sender, shutdown) = watch::channel(false);
-        let core = DaemonCore::new(
-            settings,
-            TuyaLanConnector::default(),
-            TuyaDiscovery::default(),
-            TuyaCloud::new(UreqClient::default(), SystemEnv),
-            ChildPanel::default(),
-            snapshots_sender,
-        );
-        tokio::task::spawn_local(daemon::accept_panels(
-            listener,
-            DaemonChannels {
-                requests: requests_sender,
-                snapshots,
-                shutdown,
-            },
-        ));
-        // Por enquanto só Ctrl+C encerra; o item "Sair" da bandeja chega na #23/#24.
-        daemon::run(core, requests, async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await;
-        let _ = shutdown_sender.send(true);
-        log::info!("elgin-tray encerrado");
-        Ok(())
+        // Sem bandeja ainda: o remetente fica vivo para o canal não fechar.
+        let (_tray_sender, tray_events) = mpsc::unbounded_channel();
+        serve(listener, tray_events, &mut NoTray).await
     });
+    finish(result, log_path)
+}
+
+#[cfg(not(windows))]
+struct NoTray;
+
+#[cfg(not(windows))]
+impl daemon::TrayOutput for NoTray {
+    fn show(&mut self, _view: &elgin_application::tray::TrayViewModel) {}
+}
+
+/// Vira o daemon (`Some(listener)`) ou avisa o que já está rodando (`None`).
+async fn claim_instance() -> Result<Option<transport::IpcListener>, String> {
+    match transport::claim()
+        .await
+        .map_err(|error| format!("não foi possível abrir o canal local: {error}"))?
+    {
+        Instance::Primary(listener) => Ok(Some(listener)),
+        Instance::AlreadyRunning => {
+            log::info!("já havia um elgin-tray rodando; pedido para abrir o painel enviado");
+            Ok(None)
+        }
+    }
+}
+
+/// Monta o daemon com os adaptadores reais e roda até "Sair" (ou Ctrl+C, em desenvolvimento).
+async fn serve(
+    listener: transport::IpcListener,
+    tray_events: mpsc::UnboundedReceiver<daemon::TrayEvent>,
+    tray: &mut impl daemon::TrayOutput,
+) -> Result<(), String> {
+    let settings = load_settings()?;
+    let (requests_sender, requests) = mpsc::unbounded_channel();
+    let (snapshots_sender, snapshots) = watch::channel(None);
+    let (shutdown_sender, shutdown) = watch::channel(false);
+    let core = DaemonCore::new(
+        settings,
+        TuyaLanConnector::default(),
+        TuyaDiscovery::default(),
+        TuyaCloud::new(UreqClient::default(), SystemEnv),
+        ChildPanel::default(),
+        snapshots_sender,
+        UPDATE_POLICY,
+    );
+    tokio::task::spawn_local(daemon::accept_panels(
+        listener,
+        DaemonChannels {
+            requests: requests_sender,
+            snapshots,
+            shutdown,
+        },
+    ));
+    daemon::run(core, requests, tray_events, tray, async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await;
+    let _ = shutdown_sender.send(true);
+    log::info!("elgin-tray encerrado");
+    Ok(())
+}
+
+fn finish(result: Result<(), String>, log_path: Option<PathBuf>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {

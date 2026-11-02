@@ -8,21 +8,38 @@ use std::future::Future;
 use std::time::Instant;
 
 use elgin_application::ports::{BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository};
+use elgin_application::tray::{TrayAction, TrayViewModel};
 use elgin_ipc::messages::PanelMessage;
 use elgin_ipc::session::{DaemonChannels, serve_client};
 use elgin_ipc::transport::IpcListener;
 use tokio::sync::mpsc;
 
-pub(crate) use self::core::DaemonCore;
-pub(crate) use self::panel::ChildPanel;
+pub(crate) use self::core::{DaemonCore, TrayOutcome};
+pub(crate) use self::panel::{Anchor, ChildPanel};
 
-/// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada e os pedidos dos painéis,
-/// até `exit` terminar.
-pub(crate) async fn run<R, K, D, C, P>(
+/// Uma interação com o ícone da bandeja.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TrayEvent {
+    pub(crate) action: TrayAction,
+    /// Onde o ícone está na tela (para o painel abrir colado nele).
+    pub(crate) anchor: Option<Anchor>,
+}
+
+/// Para onde vai o que a bandeja deve mostrar (a bandeja do sistema).
+pub(crate) trait TrayOutput {
+    fn show(&mut self, view: &TrayViewModel);
+}
+
+/// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis e
+/// as ações da bandeja, e mostra na bandeja cada mudança, até "Sair" ou `exit` terminar.
+pub(crate) async fn run<R, K, D, C, P, T>(
     mut core: DaemonCore<R, K, D, C, P>,
     mut requests: mpsc::UnboundedReceiver<PanelMessage>,
+    mut tray_events: mpsc::UnboundedReceiver<TrayEvent>,
+    tray: &mut T,
     exit: impl Future<Output = ()>,
 ) where
+    T: TrayOutput,
     R: ConfigRepository,
     K: BulbConnector + Clone,
     D: BulbDiscovery + Clone,
@@ -30,12 +47,23 @@ pub(crate) async fn run<R, K, D, C, P>(
     P: panel::PanelProcess,
 {
     tokio::pin!(exit);
+    let mut shown: Option<TrayViewModel> = None;
     loop {
+        let view = core.tray_view();
+        if shown.as_ref() != Some(&view) {
+            tray.show(&view);
+            shown = Some(view);
+        }
         let deadline = core.next_deadline();
         tokio::select! {
             () = wait_until(deadline) => core.on_deadline().await,
             event = core.next_bulb_event() => core.on_bulb_event(event).await,
             Some(message) = requests.recv() => core.on_request(message).await,
+            Some(event) = tray_events.recv() => {
+                if core.on_tray_action(event.action, event.anchor).await == TrayOutcome::Quit {
+                    break;
+                }
+            }
             () = &mut exit => break,
         }
     }
