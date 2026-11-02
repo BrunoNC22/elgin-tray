@@ -11,6 +11,7 @@ publish.workspace = true
 elgin-domain = { workspace = true }
 elgin-ipc = { workspace = true }
 slint = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
 
 [build-dependencies]
 slint-build = { workspace = true }

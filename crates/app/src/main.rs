@@ -52,11 +52,14 @@ fn main() -> ExitCode {
             println!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Ok(Mode::Panel) => {
-            console::attach_parent_console();
-            eprintln!("O painel ainda não foi implementado.");
-            ExitCode::from(2)
-        }
+        Ok(Mode::Panel) => match elgin_panel::runner::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                console::attach_parent_console();
+                eprintln!("Erro: {message}");
+                ExitCode::FAILURE
+            }
+        },
         Err(message) => {
             console::attach_parent_console();
             eprintln!("{message}\n\n{USAGE}");

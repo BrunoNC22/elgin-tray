@@ -1,25 +1,254 @@
+// O painel que abre colado na bandeja. Os valores vêm do view-model em Rust (view_model.rs);
+// cada gesto chama um callback, e o Rust devolve o novo estado.
+
+import { Switch, Palette } from "std-widgets.slint";
 import { ColourDisc } from "colour_disc.slint";
 
 export { ColourDisc }
 
-// Janela de pré-visualização do disco (substituída pelo painel completo na #29).
-export component DiscPreview inherits Window {
-    title: "Disco de cores";
-    width: 260px;
-    height: 260px;
-    background: #202020;
+// Slider com fundo em gradiente (brilho: preto → cor atual; temperatura: quente → frio).
+component GradientSlider inherits Rectangle {
+    in property <brush> track;
+    in property <float> value; // 0..1
+    in property <bool> enabled: true;
+    callback changed(float);
+    height: 28px;
+
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: 12px;
+        border-radius: 6px;
+        background: root.track;
+        border-width: 1px;
+        border-color: Palette.border;
+        opacity: root.enabled ? 1.0 : 0.4;
+    }
+
+    Rectangle {
+        width: 22px;
+        height: 22px;
+        x: root.value * (root.width - self.width);
+        y: (root.height - self.height) / 2;
+        border-radius: self.width / 2;
+        background: white;
+        border-width: 2px;
+        border-color: #00000070;
+        visible: root.enabled;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.changed(max(0, min(1, self.mouse-x / root.width)));
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.changed(max(0, min(1, self.mouse-x / root.width)));
+            }
+        }
+    }
+}
+
+// Aba (Cor / Branco).
+component TabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback clicked;
+    height: 32px;
+    border-radius: 6px;
+    background: root.selected ? Palette.accent-background : transparent;
+
+    Text {
+        text: root.text;
+        color: root.selected ? Palette.accent-foreground : Palette.foreground;
+        font-weight: root.selected ? 700 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        opacity: root.enabled ? 1.0 : 0.5;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component Panel inherits Window {
+    title: "elgin-tray";
+    no-frame: true;
+    always-on-top: true;
+    width: 320px;
+    background: Palette.background;
+
+    in property <string> bulb-name;
+    in property <string> notice;
+    in property <bool> controls-enabled;
+    in property <bool> power-on;
+    in property <bool> colour-tab;
     in property <image> disc;
-    in-out property <float> marker-x;
-    in-out property <float> marker-y;
-    callback picked(float, float);
-    ColourDisc {
-        x: 20px;
-        y: 20px;
-        width: 220px;
-        height: 220px;
-        disc: root.disc;
-        marker-x: root.marker-x;
-        marker-y: root.marker-y;
-        picked(x, y) => { root.picked(x, y); }
+    in property <float> marker-x;
+    in property <float> marker-y;
+    in property <float> brightness; // 0..1
+    in property <int> brightness-percent;
+    in property <float> temperature; // 0..1
+    in property <color> full-colour;
+    in property <color> warm-colour;
+    in property <color> cool-colour;
+    in property <[color]> favorites;
+
+    callback power-toggled(bool);
+    callback tab-selected(bool); // true = Cor
+    callback colour-picked(float, float);
+    callback brightness-changed(float);
+    callback temperature-changed(float);
+    callback favorite-applied(int);
+    callback favorite-saved(int);
+    callback close-requested();
+
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.close-requested();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    Rectangle {
+        border-width: 1px;
+        border-color: Palette.border;
+        border-radius: 8px;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.bulb-name;
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                Switch {
+                    checked: root.power-on;
+                    enabled: root.controls-enabled;
+                    toggled => { root.power-toggled(self.checked); }
+                }
+            }
+
+            if root.notice != "": Text {
+                text: root.notice;
+                color: #e8912d;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                TabButton {
+                    text: "Cor";
+                    selected: root.colour-tab;
+                    enabled: root.controls-enabled;
+                    clicked => { root.tab-selected(true); }
+                }
+                TabButton {
+                    text: "Branco";
+                    selected: !root.colour-tab;
+                    enabled: root.controls-enabled;
+                    clicked => { root.tab-selected(false); }
+                }
+            }
+
+            if root.colour-tab: HorizontalLayout {
+                alignment: center;
+                ColourDisc {
+                    width: 220px;
+                    height: 220px;
+                    disc: root.disc;
+                    marker-x: root.marker-x;
+                    marker-y: root.marker-y;
+                    enabled: root.controls-enabled;
+                    picked(x, y) => { root.colour-picked(x, y); }
+                }
+            }
+
+            if !root.colour-tab: VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Temperatura";
+                    color: Palette.foreground;
+                }
+                GradientSlider {
+                    track: @linear-gradient(90deg, root.warm-colour 0%, root.cool-colour 100%);
+                    value: root.temperature;
+                    enabled: root.controls-enabled;
+                    changed(value) => { root.temperature-changed(value); }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    Text {
+                        text: "Brilho";
+                        color: Palette.foreground;
+                    }
+                    Text {
+                        text: root.brightness-percent + "%";
+                        color: Palette.foreground;
+                        horizontal-alignment: right;
+                    }
+                }
+                GradientSlider {
+                    track: @linear-gradient(90deg, #000000 0%, root.full-colour 100%);
+                    value: root.brightness;
+                    enabled: root.controls-enabled;
+                    changed(value) => { root.brightness-changed(value); }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: "Favoritas (clique direito salva a cor atual)";
+                    color: Palette.foreground;
+                    font-size: 11px;
+                    opacity: 0.7;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: center;
+                    for colour[index] in root.favorites: Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 16px;
+                        background: colour;
+                        border-width: 2px;
+                        border-color: Palette.border;
+                        opacity: root.controls-enabled ? 1.0 : 0.4;
+                        TouchArea {
+                            enabled: root.controls-enabled;
+                            pointer-event(event) => {
+                                if (event.kind == PointerEventKind.up) {
+                                    if (event.button == PointerEventButton.right) {
+                                        root.favorite-saved(index);
+                                    } else if (event.button == PointerEventButton.left) {
+                                        root.favorite-applied(index);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

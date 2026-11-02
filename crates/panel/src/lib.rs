@@ -2,6 +2,7 @@
 
 pub mod disc;
 pub mod disc_image;
+pub mod runner;
 pub mod view_model;
 
 /// Código gerado pelo Slint a partir de `ui/panel.slint`.
