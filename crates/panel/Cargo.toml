@@ -1,0 +1,15 @@
+[package]
+name = "elgin-panel"
+description = "Painel (Slint) aberto pela bandeja e o seu view-model."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+elgin-ipc = { workspace = true }
+
+[lints]
+workspace = true

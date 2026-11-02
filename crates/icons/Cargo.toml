@@ -1,0 +1,15 @@
+[package]
+name = "elgin-icons"
+description = "Renderização do ícone da bandeja (RGBA) a partir do estado."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+elgin-application = { workspace = true }
+
+[lints]
+workspace = true

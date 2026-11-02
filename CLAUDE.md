@@ -77,6 +77,8 @@ O repositório é **público**.
 
 ## Arquitetura (hexagonal)
 
+Detalhes, diagramas e o fluxo de um comando: [docs/architecture.md](docs/architecture.md).
+
 ```
 crates/
   domain/          elgin-domain        Entidades e regras puras. Sem I/O, sem async, sem dependência de plataforma.
@@ -96,8 +98,13 @@ crates/
 ```
 
 - Regra de dependência: `domain` ← `application` ← adaptadores ← `app`. O domínio e a aplicação **não
-  conhecem** Windows, Linux, Tuya, Slint, TOML nem rede. Adaptadores não dependem uns dos outros
-  (exceção: `panel` e `app` usam `ipc`).
+  conhecem** Windows, Linux, Tuya, Slint, TOML nem rede. Adaptadores não dependem uns dos outros.
+  Exceções: as bibliotecas de apoio `icons` (usada pelas bandejas) e `ipc` (usada pelo `panel` e pelo `app`).
+- Crates de um sistema só têm conteúdo nele (`#![cfg(...)]` no `lib.rs`) e entram no `app` por
+  `[target.'cfg(...)'.dependencies]`. Dependências compartilhadas ficam em `[workspace.dependencies]`
+  (nas crates: `dep = { workspace = true }`); lints em `[workspace.lints]`.
+- Para conferir o lado Linux a partir do Windows: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings`
+  (alvo instalado com `rustup target add x86_64-unknown-linux-gnu`; só checa, não gera executável).
 - Diferenças entre Windows e Linux ficam **só** nos adaptadores e na escolha feita pelo `app`
   (ex.: a política de atualização "instalar sozinho" vs "só avisar" é um valor injetado pelo `app`).
 - Portas principais (driven): `BulbGateway`, `BulbDiscovery`, `ConfigRepository`, `CloudAccount`,

@@ -1,0 +1,18 @@
+[package]
+name = "elgin-application"
+description = "Aplicação: casos de uso e portas (traits). Dublês das portas na feature `testing`."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+
+[lints]
+workspace = true
+
+[features]
+# Expõe os dublês de teste das portas (stubs, spies, fakes) para os testes de outras crates.
+testing = []

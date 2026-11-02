@@ -1,0 +1,13 @@
+[package]
+name = "elgin-domain"
+description = "Domínio: entidades, value objects e regras puras da lâmpada (sem I/O, sem async, sem plataforma)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

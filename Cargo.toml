@@ -1,13 +1,39 @@
-[package]
-name = "elgin-tray"
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
-description = "Controle de lâmpadas Elgin Smart (Tuya) pela bandeja do Windows e do KDE Plasma, via rede local"
 repository = "https://github.com/BrunoNC22/elgin-tray"
 publish = false
 
-[dependencies]
+# Crates internas. Adicione as dependências externas compartilhadas aqui também,
+# e nas crates use `dep = { workspace = true }`.
+[workspace.dependencies]
+elgin-domain = { path = "crates/domain" }
+elgin-application = { path = "crates/application" }
+elgin-tuya-lan = { path = "crates/tuya-lan" }
+elgin-tuya-cloud = { path = "crates/tuya-cloud" }
+elgin-config = { path = "crates/config" }
+elgin-ipc = { path = "crates/ipc" }
+elgin-icons = { path = "crates/icons" }
+elgin-tray-windows = { path = "crates/tray-windows" }
+elgin-tray-kde = { path = "crates/tray-kde" }
+elgin-platform-windows = { path = "crates/platform-windows" }
+elgin-platform-linux = { path = "crates/platform-linux" }
+elgin-updater = { path = "crates/updater" }
+elgin-panel = { path = "crates/panel" }
+
+[workspace.lints.rust]
+# `deny` (e não `forbid`) para permitir `#[allow(unsafe_code)]` pontual em código de FFI,
+# sempre com um comentário explicando o motivo.
+unsafe_code = "deny"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
 
 [profile.release]
 lto = true

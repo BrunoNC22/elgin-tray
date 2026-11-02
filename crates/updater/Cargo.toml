@@ -1,0 +1,14 @@
+[package]
+name = "elgin-updater"
+description = "Adaptador: releases do GitHub e verificação de assinatura das atualizações."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-application = { workspace = true }
+
+[lints]
+workspace = true

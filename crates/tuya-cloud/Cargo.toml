@@ -1,0 +1,15 @@
+[package]
+name = "elgin-tuya-cloud"
+description = "Adaptador: login por QR, lista de dispositivos e local key pela API de nuvem da Tuya."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+elgin-application = { workspace = true }
+
+[lints]
+workspace = true

@@ -3,5 +3,116 @@
 version = 4
 
 [[package]]
+name = "elgin-application"
+version = "0.1.0"
+dependencies = [
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-config"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-domain"
+version = "0.1.0"
+
+[[package]]
+name = "elgin-icons"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-ipc"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-panel"
+version = "0.1.0"
+dependencies = [
+ "elgin-domain",
+ "elgin-ipc",
+]
+
+[[package]]
+name = "elgin-platform-linux"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+]
+
+[[package]]
+name = "elgin-platform-windows"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+]
+
+[[package]]
 name = "elgin-tray"
 version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-config",
+ "elgin-domain",
+ "elgin-icons",
+ "elgin-ipc",
+ "elgin-panel",
+ "elgin-platform-linux",
+ "elgin-platform-windows",
+ "elgin-tray-kde",
+ "elgin-tray-windows",
+ "elgin-tuya-cloud",
+ "elgin-tuya-lan",
+ "elgin-updater",
+]
+
+[[package]]
+name = "elgin-tray-kde"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-icons",
+]
+
+[[package]]
+name = "elgin-tray-windows"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-icons",
+]
+
+[[package]]
+name = "elgin-tuya-cloud"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-tuya-lan"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+ "elgin-domain",
+]
+
+[[package]]
+name = "elgin-updater"
+version = "0.1.0"
+dependencies = [
+ "elgin-application",
+]

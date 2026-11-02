@@ -1,0 +1,15 @@
+[package]
+name = "elgin-tray-kde"
+description = "Adaptador: bandeja do KDE Plasma (StatusNotifierItem)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-application = { workspace = true }
+elgin-icons = { workspace = true }
+
+[lints]
+workspace = true

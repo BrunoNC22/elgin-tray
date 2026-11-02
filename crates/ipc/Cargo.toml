@@ -1,0 +1,15 @@
+[package]
+name = "elgin-ipc"
+description = "Protocolo de mensagens entre painel e daemon e transporte local (named pipe / Unix socket)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+elgin-application = { workspace = true }
+
+[lints]
+workspace = true

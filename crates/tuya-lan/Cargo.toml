@@ -1,0 +1,15 @@
+[package]
+name = "elgin-tuya-lan"
+description = "Adaptador: protocolo local Tuya 3.5 (TCP 6668) e descoberta UDP."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+elgin-domain = { workspace = true }
+elgin-application = { workspace = true }
+
+[lints]
+workspace = true
