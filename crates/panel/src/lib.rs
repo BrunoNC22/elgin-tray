@@ -2,6 +2,9 @@
 
 pub mod disc;
 pub mod disc_image;
+#[cfg(windows)]
+mod monitor;
+pub mod placement;
 pub mod runner;
 pub mod view_model;
 

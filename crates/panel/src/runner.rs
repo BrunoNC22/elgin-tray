@@ -11,6 +11,7 @@ use slint::{ComponentHandle, ModelRc, VecModel, Weak};
 use tokio::sync::mpsc;
 
 use crate::disc::DiscPoint;
+use crate::placement::Rect;
 use crate::view_model::{PanelView, PanelViewModel, Tab};
 use crate::{Panel, disc_slint_image};
 
@@ -21,7 +22,8 @@ type Outgoing = mpsc::UnboundedSender<PanelMessage>;
 const DISC_PIXELS: u32 = 440;
 
 /// Abre o painel e só volta quando ele fecha (Esc, perda de foco ou o daemon mandar fechar).
-pub fn run() -> Result<(), String> {
+/// `anchor` é onde o ícone da bandeja está (o painel abre colado nele).
+pub fn run(anchor: Option<Rect>) -> Result<(), String> {
     let window =
         Panel::new().map_err(|error| format!("não foi possível criar o painel: {error}"))?;
     window.set_disc(disc_slint_image(DISC_PIXELS));
@@ -35,12 +37,20 @@ pub fn run() -> Result<(), String> {
 
     let weak = window.as_weak();
     let ipc_model = Arc::clone(&model);
-    std::thread::spawn(move || talk_to_daemon(&ipc_model, &weak, outgoing_receiver));
+    let (finished, ipc_done) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        talk_to_daemon(&ipc_model, &weak, outgoing_receiver);
+        let _ = finished.send(());
+    });
 
     window.show().map_err(|error| error.to_string())?;
-    configure_native_window(&window);
+    configure_native_window(&window, &outgoing);
+    place(&window, anchor);
     slint::run_event_loop().map_err(|error| error.to_string())?;
+    // O daemon precisa saber que o painel fechou (para um clique no ícone logo depois não
+    // reabrir): dá um tempinho para a mensagem sair antes de o processo terminar.
     let _ = outgoing.send(PanelMessage::Close);
+    let _ = ipc_done.recv_timeout(std::time::Duration::from_millis(300));
     Ok(())
 }
 
@@ -87,18 +97,24 @@ fn connect_callbacks(window: &Panel, model: &SharedModel, outgoing: &Outgoing) {
     window.on_favorite_applied(move |slot| apply(slot as f32, 0.0));
     let save = handler(|model, slot, _| model.save_favorite(slot as u8));
     window.on_favorite_saved(move |slot| save(slot as f32, 0.0));
-    window.on_close_requested(|| {
-        let _ = slint::quit_event_loop();
-    });
+    let closing = outgoing.clone();
+    window.on_close_requested(move || close_now(&closing));
+}
+
+/// Avisa o daemon que o painel está fechando (já, antes de sair do loop) e fecha.
+fn close_now(outgoing: &Outgoing) {
+    let _ = outgoing.send(PanelMessage::Close);
+    let _ = slint::quit_event_loop();
 }
 
 /// Fecha ao perder o foco e não aparece na barra de tarefas (Windows).
-fn configure_native_window(window: &Panel) {
+fn configure_native_window(window: &Panel, outgoing: &Outgoing) {
     use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
 
-    window.window().on_winit_window_event(|_, event| {
+    let closing = outgoing.clone();
+    window.window().on_winit_window_event(move |_, event| {
         if let winit::event::WindowEvent::Focused(false) = event {
-            let _ = slint::quit_event_loop();
+            close_now(&closing);
         }
         EventResult::Propagate
     });
@@ -110,6 +126,28 @@ fn configure_native_window(window: &Panel) {
         }
         native.focus_window();
     });
+}
+
+/// Coloca o painel colado no ícone, do lado da barra de tarefas (Windows). No Linux o
+/// posicionamento depende da sessão (Wayland/X11) e chega na #31.
+fn place(window: &Panel, anchor: Option<Rect>) {
+    #[cfg(windows)]
+    {
+        use crate::placement::{panel_position, taskbar_edge};
+
+        let centre = anchor.map(|icon| (icon.x + icon.width / 2, icon.y + icon.height / 2));
+        let Some((monitor, work_area)) = crate::monitor::monitor_at(centre) else {
+            return;
+        };
+        let size = window.window().size();
+        let size = (size.width as i32, size.height as i32);
+        let (x, y) = panel_position(anchor, size, work_area, taskbar_edge(monitor, work_area));
+        window
+            .window()
+            .set_position(slint::PhysicalPosition::new(x, y));
+    }
+    #[cfg(not(windows))]
+    let _ = (window, anchor);
 }
 
 /// A conexão com o daemon: snapshots atualizam a tela; mensagens da tela vão para o daemon.

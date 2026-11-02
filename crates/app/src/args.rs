@@ -1,6 +1,7 @@
 //! Argumentos da linha de comando.
 
 use elgin_domain::{Brightness, BulbCommand, ColorTemperature, Hsv, Hue, Power, Saturation};
+use elgin_panel::placement::Rect;
 
 pub(crate) const USAGE: &str = "\
 Uso:
@@ -25,7 +26,8 @@ A configuração é lida de %APPDATA%\\elgin-tray\\config.toml (Windows) ou
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Mode {
     Daemon,
-    Panel,
+    /// O painel, com a posição do ícone da bandeja (se veio).
+    Panel(Option<Rect>),
     Ctl(CtlCommand),
     Help,
 }
@@ -49,8 +51,9 @@ pub(crate) fn parse(args: &[String]) -> Result<Mode, String> {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
         [] => Ok(Mode::Daemon),
-        // Os argumentos do painel (posição do ícone) são lidos pelo próprio painel (#21).
-        ["panel", ..] => Ok(Mode::Panel),
+        // Uma âncora malformada não impede o painel de abrir (só não fica colado no ícone).
+        ["panel"] => Ok(Mode::Panel(None)),
+        ["panel", "--anchor", anchor] => Ok(Mode::Panel(parse_anchor(anchor))),
         ["help" | "--help" | "-h"] => Ok(Mode::Help),
         ["ctl", rest @ ..] => parse_ctl(rest).map(Mode::Ctl),
         _ => Err(format!("argumentos desconhecidos: {}", words.join(" "))),
@@ -95,6 +98,23 @@ fn parse_ctl(words: &[&str]) -> Result<CtlCommand, String> {
     }
 }
 
+/// `x,y,largura,altura` em pixels físicos.
+fn parse_anchor(text: &str) -> Option<Rect> {
+    let numbers: Vec<i32> = text
+        .split(',')
+        .map(|part| part.trim().parse().ok())
+        .collect::<Option<_>>()?;
+    match numbers.as_slice() {
+        [x, y, width, height] => Some(Rect {
+            x: *x,
+            y: *y,
+            width: *width,
+            height: *height,
+        }),
+        _ => None,
+    }
+}
+
 /// Um número inteiro em `min..=max`.
 fn number(name: &str, text: &str, min: u16, max: u16) -> Result<u16, String> {
     text.parse::<u16>()
@@ -131,8 +151,18 @@ mod tests {
 
     #[test]
     fn panel_and_help() {
-        assert_eq!(parse_text("panel"), Ok(Mode::Panel));
-        assert_eq!(parse_text("panel --anchor 1,2,3,4"), Ok(Mode::Panel));
+        assert_eq!(parse_text("panel"), Ok(Mode::Panel(None)));
+        assert_eq!(
+            parse_text("panel --anchor 1500,-20,24,24"),
+            Ok(Mode::Panel(Some(Rect {
+                x: 1500,
+                y: -20,
+                width: 24,
+                height: 24
+            })))
+        );
+        assert_eq!(parse_text("panel --anchor lixo"), Ok(Mode::Panel(None)));
+        assert_eq!(parse_text("panel --anchor 1,2,3"), Ok(Mode::Panel(None)));
         assert_eq!(parse_text("help"), Ok(Mode::Help));
         assert_eq!(parse_text("--help"), Ok(Mode::Help));
         assert_eq!(parse_text("-h"), Ok(Mode::Help));

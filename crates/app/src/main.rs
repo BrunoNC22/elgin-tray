@@ -52,7 +52,7 @@ fn main() -> ExitCode {
             println!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Ok(Mode::Panel) => match elgin_panel::runner::run() {
+        Ok(Mode::Panel(anchor)) => match elgin_panel::runner::run(anchor) {
             Ok(()) => ExitCode::SUCCESS,
             Err(message) => {
                 console::attach_parent_console();

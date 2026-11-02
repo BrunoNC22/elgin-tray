@@ -28,6 +28,9 @@ use crate::daemon::panel::{self, Anchor, PanelProcess};
 pub(crate) const SETUP_POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// Espera antes de tentar recuperar a chave de novo quando faltou internet.
 pub(crate) const RECOVERY_RETRY: Duration = Duration::from_secs(300);
+/// Um clique no ícone logo depois do painel fechar sozinho (perdeu o foco por causa desse mesmo
+/// clique) não reabre o painel.
+pub(crate) const PANEL_REOPEN_GUARD: Duration = Duration::from_millis(500);
 
 /// O controlador publica por aqui, mas o daemon recalcula o snapshot depois de cada evento.
 #[derive(Debug, Default)]
@@ -60,6 +63,8 @@ pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P> {
     panel: P,
     snapshots: watch::Sender<Option<SnapshotDto>>,
     update_policy: UpdatePolicy,
+    /// Quando o painel avisou que fechou.
+    panel_closed_at: Option<Instant>,
 }
 
 impl<R, K, D, C, P> DaemonCore<R, K, D, C, P>
@@ -92,6 +97,7 @@ where
             panel,
             snapshots,
             update_policy,
+            panel_closed_at: None,
         };
         core.connect_to_primary_bulb();
         core.publish();
@@ -159,7 +165,8 @@ where
 
     pub(crate) async fn on_request(&mut self, message: PanelMessage) {
         match message {
-            PanelMessage::Hello { .. } | PanelMessage::Close => {}
+            PanelMessage::Hello { .. } => {}
+            PanelMessage::Close => self.panel_closed_at = Some(TokioClock.now()),
             PanelMessage::Command { command } => {
                 let _ = self.controller.execute(command.to_command()).await;
             }
@@ -194,6 +201,13 @@ where
 
     /// Clique no ícone: abre ou fecha o painel.
     pub(crate) fn toggle_panel(&mut self, anchor: Option<Anchor>) {
+        let closed_just_now = self
+            .panel_closed_at
+            .take()
+            .is_some_and(|closed| TokioClock.now() < closed + PANEL_REOPEN_GUARD);
+        if closed_just_now && !self.panel.is_open() {
+            return;
+        }
         if let Err(error) = panel::toggle(&mut self.panel, anchor) {
             log::warn!("não foi possível abrir o painel: {error}");
         }
@@ -814,6 +828,23 @@ mod tests {
                 .await,
             TrayOutcome::Quit
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_click_right_after_the_panel_closed_itself_does_not_reopen_it() {
+        let mut f = fixture(AppConfig::default());
+        f.core.toggle_panel(None);
+        assert!(f.core.panel.open);
+
+        // O clique no ícone tira o foco do painel, que fecha e avisa; o clique chega logo depois.
+        f.core.panel.open = false;
+        f.core.on_request(PanelMessage::Close).await;
+        f.core.toggle_panel(None);
+        assert!(!f.core.panel.open, "não reabre");
+
+        tokio::time::sleep(PANEL_REOPEN_GUARD).await;
+        f.core.toggle_panel(None);
+        assert!(f.core.panel.open, "um clique depois abre normalmente");
     }
 
     #[tokio::test(start_paused = true)]
