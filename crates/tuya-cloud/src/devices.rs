@@ -70,14 +70,19 @@ pub(crate) async fn list_devices<H: HttpClient, E: CloudEnv>(
     Ok((devices, session))
 }
 
+/// Categorias da Tuya que são luz: lâmpada, fita, plafon, luz ambiente, cordão de luz.
+const LIGHT_CATEGORIES: [&str; 5] = ["dj", "dd", "xdd", "fwd", "dc"];
+
 fn parse_device(item: &Value) -> Option<CloudDevice> {
     let text = |field: &str| item[field].as_str().unwrap_or_default().to_owned();
     let id = item["id"].as_str()?.to_owned();
+    let category = text("category");
     Some(CloudDevice {
         id,
         name: text("name"),
         local_key: LocalKey::new(text("local_key")),
-        category: text("category"),
+        is_light: LIGHT_CATEGORIES.contains(&category.as_str()),
+        category,
         product_name: text("product_name"),
     })
 }
@@ -270,6 +275,7 @@ mod tests {
             name: "Lâmpada do quarto".to_owned(),
             local_key: LocalKey::new(key),
             category: "dj".to_owned(),
+            is_light: true,
             product_name: "10W Smart color".to_owned(),
         }
     }
@@ -473,6 +479,15 @@ mod tests {
             list_devices(&mut http, &mut FixedEnv::new(NOW), session(NOW + 3_600_000)).await,
             Err(CloudError::Network("sem internet".to_owned()))
         );
+    }
+
+    #[test]
+    fn only_light_categories_are_marked_as_lights() {
+        let plug = json!({"id": "x", "name": "Tomada", "local_key": "k", "category": "cz", "product_name": "Plug"});
+
+        assert!(parse_device(&lamp("bf1", "k")).unwrap().is_light);
+        assert!(!parse_device(&plug).unwrap().is_light);
+        assert_eq!(parse_device(&json!({"name": "sem id"})), None);
     }
 
     #[test]

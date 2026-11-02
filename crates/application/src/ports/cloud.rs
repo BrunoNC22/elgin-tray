@@ -24,8 +24,10 @@ pub struct CloudDevice {
     pub id: String,
     pub name: String,
     pub local_key: LocalKey,
-    /// Categoria da Tuya (lâmpadas são `dj`).
+    /// Categoria como o fabricante chama (só para mostrar).
     pub category: String,
+    /// Se é uma lâmpada ou fita de luz (decidido pelo adaptador).
+    pub is_light: bool,
     pub product_name: String,
 }
 

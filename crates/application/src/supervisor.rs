@@ -43,6 +43,17 @@ pub struct ConnectionTarget {
     pub endpoint: Option<Endpoint>,
 }
 
+impl From<&crate::config::BulbConfig> for ConnectionTarget {
+    /// Alvo de conexão de uma lâmpada configurada (depois do setup ou da recuperação da chave).
+    fn from(bulb: &crate::config::BulbConfig) -> Self {
+        Self {
+            id: bulb.id.clone(),
+            key: bulb.local_key.clone(),
+            endpoint: bulb.endpoint.clone(),
+        }
+    }
+}
+
 /// Algo que quem usa o supervisor precisa tratar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SupervisorEvent {
@@ -349,6 +360,18 @@ mod tests {
             self.clock.advance(wait);
             wait
         }
+    }
+
+    #[test]
+    fn a_configured_bulb_becomes_a_connection_target() {
+        let bulb = crate::config::BulbConfig {
+            id: BulbId::try_new("lampada-teste").unwrap(),
+            name: elgin_domain::BulbName::try_new("Quarto").unwrap(),
+            local_key: LocalKey::new("chave-falsa-1234"),
+            endpoint: Some(endpoint(10)),
+        };
+
+        assert_eq!(ConnectionTarget::from(&bulb), target(Some(endpoint(10))));
     }
 
     #[tokio::test]

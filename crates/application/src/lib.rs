@@ -12,6 +12,7 @@ pub mod config;
 pub mod controller;
 pub mod credentials;
 pub mod ports;
+pub mod setup;
 pub mod status;
 pub mod supervisor;
 

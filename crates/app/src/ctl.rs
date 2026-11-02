@@ -672,6 +672,7 @@ mod tests {
                 name: "Lâmpada do quarto".to_owned(),
                 local_key: LocalKey::new("abcdefghijklmnop"),
                 category: "dj".to_owned(),
+                is_light: true,
                 product_name: "10W Smart color".to_owned(),
             }],
             session: CloudSession::new("nova"),
