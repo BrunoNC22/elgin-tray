@@ -30,6 +30,12 @@ pela bandeja do sistema (área de ícones ocultos) no **Windows 10/11** e no **A
   - `23` temperatura do branco (0–1000)
   - `24` cor em HSV como string hex de 12 caracteres: `HHHHSSSSVVVV` (H 0–360, S 0–1000, V 0–1000)
   - `25` cena, `26` temporizador
+- **Pareamento no Smart Life:** a lâmpada Elgin funciona no app Smart Life (aparece como "10W Smart color"),
+  mas antes é preciso **remover o dispositivo no app Elgin Smart** (editar → "Remover dispositivo").
+  Enquanto ela continua vinculada à conta Elgin na nuvem, o Smart Life falha com a mensagem genérica
+  "não foi possível conectar ao Wi‑Fi", mesmo com a rede e a senha corretas. Colocar a lâmpada em modo de
+  pareamento não basta. Com a lâmpada no Smart Life, a local key pode ser obtida pelo wizard do tinytuya
+  ou pelo tuya-local-key.
 - A local key muda se a lâmpada for pareada de novo. O app deve mostrar um erro claro quando a chave
   for recusada, em vez de travar.
 - A lâmpada só usa Wi‑Fi 2,4 GHz e precisa estar na mesma sub‑rede do PC. O IP pode mudar (DHCP):
