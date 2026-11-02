@@ -28,8 +28,9 @@ No Linux, troque `Scripts/python` por `bin/python`.
 | `frames` | quadros cifrados com a chave de sessão: consulta (16) e resposta, heartbeat (9) e resposta, comando (13) e confirmação, push de estado (8) | `pack_message` / `unpack_message` (formato 6699) |
 | `udp` | broadcasts 3.5 (formato 6699, com e sem retcode), broadcast 3.3 (formato 55AA, AES-ECB) e o pedido de descoberta enviado à porta 7000 | `pack_message`, `udp_helper.encrypt`, `udp_helper.decrypt_udp` |
 
-Cada vetor guarda o `plaintext` (o que vai dentro da criptografia, incluindo retcode e cabeçalho de
-versão quando existem) e o `frame`/`datagram` completo, tudo em hexadecimal.
+Cada vetor guarda o `plaintext` (exatamente o que vai dentro da criptografia: retcode, quando há, +
+cabeçalho de versão, quando há, + JSON), o `payload` (sem o retcode) e o `frame`/`datagram` completo,
+tudo em hexadecimal.
 
 O gerador confere cada vetor com o próprio tinytuya (desempacota de volta e compara) antes de gravar.
 

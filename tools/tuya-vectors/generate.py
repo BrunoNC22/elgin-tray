@@ -50,6 +50,8 @@ def frame(name, key, seqno, cmd, payload, iv_bytes, retcode=None, note=""):
     assert unpacked.payload == payload, name
     if retcode is not None:
         assert unpacked.retcode == retcode, name
+    # O pack_message põe o retcode (quando há) dentro da criptografia, antes do payload.
+    plaintext = (retcode.to_bytes(4, "big") if retcode is not None else b"") + payload
     return {
         "name": name,
         "note": note,
@@ -58,7 +60,8 @@ def frame(name, key, seqno, cmd, payload, iv_bytes, retcode=None, note=""):
         "cmd": cmd,
         "retcode": retcode,
         "iv": hexs(iv_bytes),
-        "plaintext": hexs(payload),
+        "payload": hexs(payload),
+        "plaintext": hexs(plaintext),
         "frame": hexs(data),
     }
 
