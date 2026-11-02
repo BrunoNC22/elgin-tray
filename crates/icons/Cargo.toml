@@ -10,6 +10,11 @@ publish.workspace = true
 [dependencies]
 elgin-domain = { workspace = true }
 elgin-application = { workspace = true }
+tiny-skia = { workspace = true }
+
+[dev-dependencies]
+# Só a ferramenta de pré-visualização (examples/preview.rs) grava PNG.
+tiny-skia = { workspace = true, features = ["png-format"] }
 
 [lints]
 workspace = true
