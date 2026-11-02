@@ -8,6 +8,6 @@ mod observer;
 
 pub use clock::Clock;
 pub use config::{ConfigError, ConfigRepository};
-pub use connection::{BulbConnector, BulbDiscovery};
+pub use connection::{BulbConnector, BulbDiscovery, BulbEvent, BulbEvents};
 pub use gateway::{BulbGateway, GatewayError};
 pub use observer::{BulbObserver, ControllerEvent};

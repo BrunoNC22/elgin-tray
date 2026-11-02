@@ -6,7 +6,7 @@ use std::time::Duration;
 use elgin_domain::BulbId;
 
 use crate::credentials::{Endpoint, LocalKey};
-use crate::ports::{BulbConnector, BulbDiscovery, GatewayError};
+use crate::ports::{BulbConnector, BulbDiscovery, BulbEvent, BulbEvents, GatewayError};
 use crate::testing::FakeBulbGateway;
 
 /// Uma chamada registrada de [`StubConnector::connect`].
@@ -24,9 +24,11 @@ pub struct StubConnector {
     inner: Rc<RefCell<ConnectorInner>>,
 }
 
+type Connection = (FakeBulbGateway, ScriptedEvents);
+
 #[derive(Debug, Default)]
 struct ConnectorInner {
-    results: VecDeque<Result<FakeBulbGateway, GatewayError>>,
+    results: VecDeque<Result<Connection, GatewayError>>,
     attempts: Vec<ConnectAttempt>,
 }
 
@@ -35,8 +37,17 @@ impl StubConnector {
         Self::default()
     }
 
+    /// A próxima conexão dá certo, com uma lâmpada que não manda eventos.
     pub fn succeed_with(&self, gateway: FakeBulbGateway) {
-        self.inner.borrow_mut().results.push_back(Ok(gateway));
+        self.succeed_with_events(gateway, ScriptedEvents::new());
+    }
+
+    /// A próxima conexão dá certo, com os eventos dados.
+    pub fn succeed_with_events(&self, gateway: FakeBulbGateway, events: ScriptedEvents) {
+        self.inner
+            .borrow_mut()
+            .results
+            .push_back(Ok((gateway, events)));
     }
 
     pub fn fail_with(&self, error: GatewayError) {
@@ -50,13 +61,14 @@ impl StubConnector {
 
 impl BulbConnector for StubConnector {
     type Gateway = FakeBulbGateway;
+    type Events = ScriptedEvents;
 
     async fn connect(
         &mut self,
         id: &BulbId,
         key: &LocalKey,
         endpoint: &Endpoint,
-    ) -> Result<FakeBulbGateway, GatewayError> {
+    ) -> Result<Connection, GatewayError> {
         let mut inner = self.inner.borrow_mut();
         inner.attempts.push(ConnectAttempt {
             id: id.clone(),
@@ -67,6 +79,33 @@ impl BulbConnector for StubConnector {
             .results
             .pop_front()
             .unwrap_or(Err(GatewayError::Unreachable))
+    }
+}
+
+/// Eventos roteirizados: entrega os enfileirados em ordem; sem nada na fila, fica esperando para
+/// sempre (como uma lâmpada quieta).
+#[derive(Debug, Clone, Default)]
+pub struct ScriptedEvents {
+    queue: Rc<RefCell<VecDeque<BulbEvent>>>,
+}
+
+impl ScriptedEvents {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&self, event: BulbEvent) {
+        self.queue.borrow_mut().push_back(event);
+    }
+}
+
+impl BulbEvents for ScriptedEvents {
+    async fn next_event(&mut self) -> BulbEvent {
+        let next = self.queue.borrow_mut().pop_front();
+        match next {
+            Some(event) => event,
+            None => std::future::pending().await,
+        }
     }
 }
 

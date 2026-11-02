@@ -14,6 +14,10 @@ aes-gcm = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["net", "time", "sync", "rt", "io-util"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "test-util"] }
 
 [lints]
 workspace = true

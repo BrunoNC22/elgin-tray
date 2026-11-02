@@ -33,9 +33,6 @@ pub(crate) mod command {
     pub(crate) const HEART_BEAT: u32 = 9;
     pub(crate) const CONTROL_NEW: u32 = 13;
     pub(crate) const DP_QUERY_NEW: u32 = 16;
-    pub(crate) const UDP_NEW: u32 = 19;
-    pub(crate) const BOARDCAST_LPV34: u32 = 35;
-    pub(crate) const REQ_DEVINFO: u32 = 37;
 }
 
 /// Chave AES-128 (local key ou chave de sessão).

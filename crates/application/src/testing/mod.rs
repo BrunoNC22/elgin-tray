@@ -11,6 +11,6 @@ mod observer;
 
 pub use clock::ManualClock;
 pub use config::FakeConfigRepository;
-pub use connection::{ConnectAttempt, StubConnector, StubDiscovery};
+pub use connection::{ConnectAttempt, ScriptedEvents, StubConnector, StubDiscovery};
 pub use gateway::FakeBulbGateway;
 pub use observer::SpyObserver;

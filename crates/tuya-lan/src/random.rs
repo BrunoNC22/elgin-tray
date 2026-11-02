@@ -32,25 +32,6 @@ impl Randomness for OsRandomness {
     }
 }
 
-/// Valores roteirizados, para testes com os vetores do tinytuya.
-#[cfg(test)]
-#[derive(Debug, Default)]
-pub(crate) struct ScriptedRandomness {
-    pub(crate) ivs: std::collections::VecDeque<Iv>,
-    pub(crate) nonces: std::collections::VecDeque<Nonce>,
-}
-
-#[cfg(test)]
-impl Randomness for ScriptedRandomness {
-    fn iv(&mut self) -> Iv {
-        self.ivs.pop_front().expect("nenhum IV roteirizado")
-    }
-
-    fn nonce(&mut self) -> Nonce {
-        self.nonces.pop_front().expect("nenhum nonce roteirizado")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

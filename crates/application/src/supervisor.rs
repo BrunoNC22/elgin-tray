@@ -6,7 +6,9 @@ use elgin_domain::BulbId;
 
 use crate::controller::BulbController;
 use crate::credentials::{Endpoint, LocalKey};
-use crate::ports::{BulbConnector, BulbDiscovery, BulbObserver, Clock, GatewayError};
+use crate::ports::{
+    BulbConnector, BulbDiscovery, BulbEvent, BulbEvents, BulbObserver, Clock, GatewayError,
+};
 use crate::status::ConnectionStatus;
 
 /// Quando e como tentar de novo.
@@ -54,10 +56,10 @@ pub enum SupervisorEvent {
 /// Mantém a conexão com a lâmpada viva e entrega cada conexão nova ao controlador.
 ///
 /// Não tem loop próprio: o daemon chama [`tick`](Self::tick) no horário de
-/// [`next_attempt_at`](Self::next_attempt_at) e avisa quedas com
+/// [`next_attempt_at`](Self::next_attempt_at), espera os avisos da lâmpada com
+/// [`next_event`](Self::next_event) e, quando chega `ConnectionLost`, chama
 /// [`connection_lost`](Self::connection_lost).
-#[derive(Debug)]
-pub struct ConnectionSupervisor<K, D, C> {
+pub struct ConnectionSupervisor<K: BulbConnector, D, C> {
     connector: K,
     discovery: D,
     clock: C,
@@ -66,6 +68,19 @@ pub struct ConnectionSupervisor<K, D, C> {
     /// Falhas seguidas desde a última conexão bem-sucedida.
     failures: u32,
     next_attempt_at: Option<Instant>,
+    /// Eventos da conexão atual (`None` sem conexão).
+    events: Option<K::Events>,
+}
+
+impl<K: BulbConnector, D, C> std::fmt::Debug for ConnectionSupervisor<K, D, C> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionSupervisor")
+            .field("target", &self.target)
+            .field("failures", &self.failures)
+            .field("next_attempt_at", &self.next_attempt_at)
+            .field("connected", &self.events.is_some())
+            .finish_non_exhaustive()
+    }
 }
 
 impl<K, D, C> ConnectionSupervisor<K, D, C>
@@ -91,6 +106,7 @@ where
             target,
             failures: 0,
             next_attempt_at: Some(now),
+            events: None,
         }
     }
 
@@ -107,6 +123,7 @@ where
     pub fn update_target(&mut self, target: ConnectionTarget) {
         self.target = target;
         self.failures = 0;
+        self.events = None;
         self.next_attempt_at = Some(self.clock.now());
     }
 
@@ -151,17 +168,27 @@ where
             .connect(&self.target.id, &self.target.key, &endpoint)
             .await
         {
-            Ok(gateway) => controller.attach(gateway).await,
+            Ok((gateway, bulb_events)) => controller.attach(gateway).await.map(|()| bulb_events),
             Err(error) => Err(error),
         };
         match connected {
-            Ok(()) => {
+            Ok(bulb_events) => {
+                self.events = Some(bulb_events);
                 self.failures = 0;
                 self.next_attempt_at = None;
             }
             Err(error) => events.extend(self.fail(controller, error, true).await),
         }
         events
+    }
+
+    /// Espera o próximo aviso da lâmpada conectada. Sem conexão, espera para sempre (use num
+    /// `select!` junto com os outros eventos do daemon).
+    pub async fn next_event(&mut self) -> BulbEvent {
+        match self.events.as_mut() {
+            Some(events) => events.next_event().await,
+            None => std::future::pending().await,
+        }
     }
 
     /// A conexão que estava com o controlador caiu (detectado pelo daemon).
@@ -190,6 +217,7 @@ where
         O: BulbObserver,
         CC: Clock,
     {
+        self.events = None;
         if error == GatewayError::KeyRejected {
             self.failures = 0;
             self.next_attempt_at = None;
@@ -236,7 +264,9 @@ mod tests {
     use crate::controller::DEFAULT_MIN_SEND_INTERVAL;
     use crate::ports::ControllerEvent;
     use crate::status::BulbSnapshot;
-    use crate::testing::{FakeBulbGateway, ManualClock, SpyObserver, StubConnector, StubDiscovery};
+    use crate::testing::{
+        FakeBulbGateway, ManualClock, ScriptedEvents, SpyObserver, StubConnector, StubDiscovery,
+    };
     use elgin_domain::{BulbState, LightMode, Power};
     use std::net::{IpAddr, Ipv4Addr};
 
@@ -558,5 +588,55 @@ mod tests {
             .await;
 
         assert_eq!(f.supervisor.next_attempt_at(), Some(f.clock.now() + SECOND));
+    }
+
+    /// `true` se `next_event` ainda está esperando (não há evento pronto).
+    async fn is_waiting(supervisor: &mut Supervisor) -> bool {
+        tokio::select! {
+            biased;
+            _ = supervisor.next_event() => false,
+            () = std::future::ready(()) => true,
+        }
+    }
+
+    #[tokio::test]
+    async fn delivers_the_events_of_the_current_connection() {
+        let mut f = fixture(Some(endpoint(10)));
+        let events = ScriptedEvents::new();
+        let pushed = BulbState {
+            power: Power::Off,
+            mode: LightMode::Music,
+        };
+        events.push(BulbEvent::StateReported(pushed));
+        f.connector.succeed_with_events(bulb(), events);
+        f.tick().await;
+
+        assert_eq!(
+            f.supervisor.next_event().await,
+            BulbEvent::StateReported(pushed)
+        );
+        assert!(is_waiting(&mut f.supervisor).await);
+    }
+
+    #[tokio::test]
+    async fn without_a_connection_there_are_no_events() {
+        let mut f = fixture(Some(endpoint(10)));
+
+        assert!(is_waiting(&mut f.supervisor).await);
+    }
+
+    #[tokio::test]
+    async fn a_lost_connection_drops_its_events() {
+        let mut f = fixture(Some(endpoint(10)));
+        let events = ScriptedEvents::new();
+        f.connector.succeed_with_events(bulb(), events.clone());
+        f.tick().await;
+
+        f.supervisor
+            .connection_lost(&mut f.controller, GatewayError::Disconnected)
+            .await;
+        events.push(BulbEvent::ConnectionLost(GatewayError::Disconnected));
+
+        assert!(is_waiting(&mut f.supervisor).await);
     }
 }

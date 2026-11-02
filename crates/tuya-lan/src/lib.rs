@@ -1,15 +1,23 @@
 //! Adaptador: protocolo local Tuya 3.5 (TCP 6668) e descoberta UDP.
 //!
 //! Referência do protocolo: tinytuya (ver `tools/tuya-vectors/README.md`).
+//!
+//! [`TuyaLanConnector`] implementa a porta `BulbConnector`. Cada conexão roda um ator numa tarefa
+//! local do tokio, então o conector precisa ser usado dentro de um `tokio::task::LocalSet`.
 
-// As partes do protocolo são construídas em issues separadas e só são usadas pelo adaptador
-// completo (#12). Até lá, parte delas só é usada nos testes.
-#![allow(dead_code)]
-
+mod connection;
+mod connector;
 mod dps;
 mod frame;
+mod message;
 mod random;
 mod session;
+mod transport;
 
+pub use connection::{Timing, TuyaEvents, TuyaGateway};
+pub use connector::TuyaLanConnector;
+
+#[cfg(test)]
+mod fake_lamp;
 #[cfg(test)]
 mod test_vectors;
