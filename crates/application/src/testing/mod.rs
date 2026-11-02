@@ -4,9 +4,11 @@
 //! caso de uso e guarda outro para inspecionar ou roteirizar.
 
 mod clock;
+mod connection;
 mod gateway;
 mod observer;
 
 pub use clock::ManualClock;
+pub use connection::{ConnectAttempt, StubConnector, StubDiscovery};
 pub use gateway::FakeBulbGateway;
 pub use observer::SpyObserver;

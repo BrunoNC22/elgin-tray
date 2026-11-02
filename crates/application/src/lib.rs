@@ -9,8 +9,10 @@
 #![allow(async_fn_in_trait)]
 
 pub mod controller;
+pub mod credentials;
 pub mod ports;
 pub mod status;
+pub mod supervisor;
 
 /// Dublês de teste das portas (stubs, spies, fakes), escritos à mão.
 #[cfg(any(test, feature = "testing"))]
