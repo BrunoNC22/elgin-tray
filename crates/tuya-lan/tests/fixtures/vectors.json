@@ -1,0 +1,187 @@
+{
+  "generator": "tools/tuya-vectors/generate.py",
+  "tinytuya_version": "1.20.0",
+  "device_id": "bf0123456789abcdefgh",
+  "version_header": "332e35000000000000000000000000",
+  "session": {
+    "local_key": "30313233343536373839616263646566",
+    "local_nonce": "101112131415161718191a1b1c1d1e1f",
+    "remote_nonce": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+    "hmac_of_local_nonce": "65635198bf06f585e07e8c9aeaab41ead0b27ea52a8cf149d76cd900014bd54d",
+    "hmac_of_remote_nonce": "4db1390c5c239d08ada5acd20ba87b1a1841ffeb7495c8b5d53c52aafbd49a4b",
+    "session_key": "2179df88b4173621da9ba82cc559011a",
+    "frames": [
+      {
+        "name": "neg_start",
+        "note": "cliente -> lâmpada: local_nonce, cifrado com a local key",
+        "key": "30313233343536373839616263646566",
+        "seqno": 1,
+        "cmd": 3,
+        "retcode": null,
+        "iv": "010101010101010101010101",
+        "plaintext": "101112131415161718191a1b1c1d1e1f",
+        "frame": "00006699000000000001000000030000002c01010101010101010101010123591ef1bf7d4d16cb1b847b05455b499100ff61147bbf5cdfde15d8d0201fc000009966"
+      },
+      {
+        "name": "neg_resp",
+        "note": "lâmpada -> cliente: remote_nonce + HMAC(local_key, local_nonce), com retcode",
+        "key": "30313233343536373839616263646566",
+        "seqno": 1,
+        "cmd": 4,
+        "retcode": 0,
+        "iv": "020202020202020202020202",
+        "plaintext": "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf65635198bf06f585e07e8c9aeaab41ead0b27ea52a8cf149d76cd900014bd54d",
+        "frame": "000066990000000000010000000400000050020202020202020202020202c5a8f910b86411524203e64a11e5bee70ec08ceeccbdf80ae6f2b04ce14c21ca539f3217556fc2cc28b6ee61818ff5549d9cf8c545d3305722a1ed087f695c517969903500009966"
+      },
+      {
+        "name": "neg_finish",
+        "note": "cliente -> lâmpada: HMAC(local_key, remote_nonce)",
+        "key": "30313233343536373839616263646566",
+        "seqno": 2,
+        "cmd": 5,
+        "retcode": null,
+        "iv": "030303030303030303030303",
+        "plaintext": "4db1390c5c239d08ada5acd20ba87b1a1841ffeb7495c8b5d53c52aafbd49a4b",
+        "frame": "00006699000000000002000000050000003c03030303030303030303030331a559eea3e58b10980fe599bd6d434e9ad5be9de47765d9a320cdef0af73ce3e80b21a5ccc55003cc8cd1f1cea55dbd00009966"
+      }
+    ]
+  },
+  "frames": [
+    {
+      "name": "dp_query_new",
+      "note": "consulta de estado: payload {} sem cabeçalho de versão",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 3,
+      "cmd": 16,
+      "retcode": null,
+      "iv": "040404040404040404040404",
+      "plaintext": "7b7d",
+      "frame": "00006699000000000003000000100000001e04040404040404040404040451ec1aba0058bc88d7845a890e347b30872500009966"
+    },
+    {
+      "name": "dp_query_new_resp",
+      "note": "resposta do estado (seqno da lâmpada é global, não o do pedido)",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 7,
+      "cmd": 16,
+      "retcode": 0,
+      "iv": "050505050505050505050505",
+      "plaintext": "7b22647073223a7b223230223a747275652c223231223a227768697465222c223232223a313030302c223233223a313030302c223234223a22303030303033653830336538222c223236223a307d7d",
+      "frame": "00006699000000000007000000100000006f050505050505050505050505631717d6956087502c8fb31ef23b1c089dccf111628ff778ec93afd38a76965adc0b15f7eda2eeac19fecb5147a5b15dbd8d079d023dfc7f916655fe834dffe8d0617dcf9ff42b52e3cd4ec3912b80ba2b28ab41952cff7e8d91b31e89946bf7f5679d00009966"
+    },
+    {
+      "name": "heart_beat",
+      "note": "heartbeat sem cabeçalho de versão",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 4,
+      "cmd": 9,
+      "retcode": null,
+      "iv": "060606060606060606060606",
+      "plaintext": "7b2267774964223a226266303132333435363738396162636465666768222c226465764964223a226266303132333435363738396162636465666768227d",
+      "frame": "00006699000000000004000000090000005a060606060606060606060606aba1ee22bc4b05b724c2343ea42964128e6b01f8124f0617b3cfcfc08c3b2c7f51bc0835f23b9247bcd062639b08b12407f3581d2ab5ef1a9e9e66616b32bf72d943f03c5656d8e72d5e45d28d6a00009966"
+    },
+    {
+      "name": "heart_beat_resp",
+      "note": "resposta do heartbeat: só retcode",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 8,
+      "cmd": 9,
+      "retcode": 0,
+      "iv": "070707070707070707070707",
+      "plaintext": "",
+      "frame": "000066990000000000080000000900000020070707070707070707070707a6cea4cf39c2f1ee4f0bd577d4d54df9077d18e900009966"
+    },
+    {
+      "name": "control_new",
+      "note": "comando: cabeçalho de versão '3.5'+12 zeros antes do JSON",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 5,
+      "cmd": 13,
+      "retcode": null,
+      "iv": "080808080808080808080808",
+      "plaintext": "332e350000000000000000000000007b2270726f746f636f6c223a352c2274223a313730303030303030302c2264617461223a7b22647073223a7b223230223a747275652c223231223a22636f6c6f7572222c223234223a22303066303033653830336538227d7d7d",
+      "frame": "000066990000000000050000000d0000008508080808080808080808080894a2cc5327d6b50d73d743ba65566a424acc76e04989e1b44712756a4edda26d1ff450820a4543980c3cb6250d479cbe90a509f32d0655090303a555a73c730dbb3abf5fbcccbf021eff40e4579ea2dc44f11d14d5d6018bfb0270cf7200169fb4c1bad1c3940edf72684977c27246d4eee5ff5ef3715e6def00009966"
+    },
+    {
+      "name": "control_new_ack",
+      "note": "confirmação do comando: só retcode",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 9,
+      "cmd": 13,
+      "retcode": 0,
+      "iv": "090909090909090909090909",
+      "plaintext": "",
+      "frame": "000066990000000000090000000d000000200909090909090909090909093de3c4a7e13a38935f5821eb2e15466ca4f9327500009966"
+    },
+    {
+      "name": "status_push",
+      "note": "push de estado da lâmpada: retcode + cabeçalho de versão + JSON",
+      "key": "2179df88b4173621da9ba82cc559011a",
+      "seqno": 10,
+      "cmd": 8,
+      "retcode": 0,
+      "iv": "0a0a0a0a0a0a0a0a0a0a0a0a",
+      "plaintext": "332e350000000000000000000000007b2270726f746f636f6c223a342c2274223a313730303030303030312c2264617461223a7b22647073223a7b223232223a3530307d7d7d",
+      "frame": "0000669900000000000a00000008000000660a0a0a0a0a0a0a0a0a0a0a0a258a30ff878e971ad16bb91a11d1bd409d7b37125e9acf139c0c34d7fed4ed3ea17036aea975cc7f89033a50fe8a63f7c91eacb136c4a0f22bdfd01f109ba6514153efe719a3ce4fd9f50940ad95416879ba28ca568a288bb96a00009966"
+    }
+  ],
+  "udp": {
+    "udp_key": "6c1ec8e2bb9bb59ab50b0daf649b410a",
+    "broadcasts": [
+      {
+        "name": "broadcast_35_with_retcode",
+        "datagram": "0000669900000000000000000023000000cd202020202020202020202020b4d76eb9819e694e55ae757e7d6e89c24108672a38e10fab8e36528e7edb79dabb5ae07310634bb3c318ee6d32863a5e180acca98e84f41d42e6f9f32bed7c3c009a99f20f935ff28d738a781e1bb6450717cb484c76bc4b7af416dd7c17dd9310961c3af40fc23b6d257db8306f7200a24b6fce36fc0aba85310e6662d03983f521c7660a41fca58c1a1c0a3c5acecf297a2a46dede567abeb06a8fb2efb38df3b60ae0e80380146b68c4c22325fa1b2abe43ddaa3396d8f796b87afca2ce519200009966",
+        "json": {
+          "ip": "192.168.0.50",
+          "gwId": "bf0123456789abcdefgh",
+          "active": 2,
+          "ability": 0,
+          "mode": 0,
+          "encrypt": true,
+          "productKey": "keyfakeproduct00",
+          "version": "3.5",
+          "token": true,
+          "wf_cfg": true
+        }
+      },
+      {
+        "name": "broadcast_35_without_retcode",
+        "datagram": "0000669900000000000000000023000000c921212121212121212121212125436154adddf71161e68b10c243a6dd7b9318465ddfe3fc4977e9cb80f5df35cada9e1656e77767cb9bb6b5ba10804d2372c795384c548eb48808862dc4c4db879f03510f8dee02f0848d76751ff5db03a754ab4f4fa1adae6fd786b001657aaa4c0862ec70c01795ab330f41cd83b68e4a7992e199af891920628cadfc665cd9eb7b29377c47f752d887fbb1ff4cd6b03a04829bf65d0326d14ebd656fdca94a722dffa21a590190f62ec47d41e87bf7199f4a9a2b902167417684be00009966",
+        "json": {
+          "ip": "192.168.0.50",
+          "gwId": "bf0123456789abcdefgh",
+          "active": 2,
+          "ability": 0,
+          "mode": 0,
+          "encrypt": true,
+          "productKey": "keyfakeproduct00",
+          "version": "3.5",
+          "token": true,
+          "wf_cfg": true
+        }
+      },
+      {
+        "name": "broadcast_33_55aa",
+        "datagram": "000055aa0000000000000013000000bc0000000023d01e5fef56833314cef60fb086ed3370172896956a9e330910344d11ac363f482611d8caa5248ac6cea65bdad007dfa41f010dca2abb30c50459a9f88024ffcb5924bb8792fe5eae7c9040e5921a98017f2170860421e6fc66f0a1ade138915fde850cd157270c5f3d1ab5ae90b30049a62f8185fbae0331ffbfcbf5aade2f1c8343bc25f3403c0c4c3db59350d34a6e0d86932426fa7efdd51338cb6d5fc6e3c09352c350aeff70280d05ecd210d868cdcc120000aa55",
+        "json": {
+          "ip": "192.168.0.50",
+          "gwId": "bf0123456789abcdefgh",
+          "active": 2,
+          "ability": 0,
+          "mode": 0,
+          "encrypt": true,
+          "productKey": "keyfakeproduct00",
+          "version": "3.3",
+          "token": true,
+          "wf_cfg": true
+        }
+      }
+    ],
+    "discovery_request": {
+      "note": "enviado em broadcast para a porta 7000 para lâmpadas 3.5 se anunciarem",
+      "iv": "303030303030303030303030",
+      "plaintext": "7b2266726f6d223a22617070222c226970223a223139322e3136382e302e3130227d",
+      "datagram": "00006699000000000000000000250000003e303030303030303030303030dccee13d89f1b46ef609a7b506d7c596df51b3c480cfd73e11decfb70c8adf0ff6877e27c967f60bf3000f620b7bce4f875400009966"
+    }
+  }
+}

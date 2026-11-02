@@ -30,3 +30,7 @@ desktop.ini
 # Claude Code (configurações locais)
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Venv do gerador de vetores (tools/tuya-vectors)
+.venv-vectors/
+__pycache__/
