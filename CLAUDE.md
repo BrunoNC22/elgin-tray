@@ -23,13 +23,18 @@ pela bandeja do sistema (área de ícones ocultos) no **Windows 10/11** e no **A
   usando o tinytuya como referência e para validar o comportamento.
 - Descoberta: broadcasts UDP nas portas 6666 (sem criptografia), 6667 (criptografados) e 7000 (3.5).
 - Dados necessários por lâmpada: `device_id`, `ip`, `local_key`, `version`.
-- DPs (data points) típicos de lâmpadas Tuya v2. Confirmar no dispositivo real antes de assumir:
+- DPs (data points) **confirmados na lâmpada real** (modelo "10W Smart color", categoria `dj`, PID na nuvem
+  `ceut0xbogrwi6jnq`; o broadcast UDP anuncia outro product key, `keytfesxxsqewnqy`):
   - `20` liga/desliga (bool)
   - `21` modo: `white` | `colour` | `scene` | `music`
   - `22` brilho do branco (10–1000)
-  - `23` temperatura do branco (0–1000)
-  - `24` cor em HSV como string hex de 12 caracteres: `HHHHSSSSVVVV` (H 0–360, S 0–1000, V 0–1000)
-  - `25` cena, `26` temporizador
+  - `23` temperatura do branco (0 = quente, 1000 = frio)
+  - `24` cor em HSV como string hex de 12 caracteres: `HHHHSSSSVVVV` (H 0–360, S 0–1000, V 0–1000).
+    Ex.: `000003e803e8` = vermelho, saturação e brilho máximos
+  - `25` cena (hex), `26` temporizador em segundos (0–86400), `27` música, `28` controle em tempo real
+  - `34` não perturbe (bool), `41` controle remoto habilitado (bool)
+  - Exemplo de resposta de status pela LAN: `{'20': True, '21': 'white', '22': 1000, '23': 1000,
+    '24': '000003e803e8', '25': '...', '26': 0, '34': False, '41': True}`
 - **Pareamento no Smart Life:** a lâmpada Elgin funciona no app Smart Life (aparece como "10W Smart color"),
   mas antes é preciso **remover o dispositivo no app Elgin Smart** (editar → "Remover dispositivo").
   Enquanto ela continua vinculada à conta Elgin na nuvem, o Smart Life falha com a mensagem genérica
