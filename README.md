@@ -37,3 +37,33 @@ Controle a sua lâmpada **Elgin Smart Color** (Tuya, Wi‑Fi) pela bandeja do si
 ```sh
 cargo build --release
 ```
+
+## Usando pelo terminal (desenvolvimento)
+
+Enquanto a bandeja não está pronta, a lâmpada pode ser controlada pelo terminal com `elgin-tray ctl`:
+
+```sh
+elgin-tray ctl status                 # mostra o estado
+elgin-tray ctl on | off | toggle
+elgin-tray ctl color 240 100 60       # matiz 0-359°, saturação 0-100%, brilho 1-100%
+elgin-tray ctl white 50 0             # brilho 1-100%, temperatura 0 (quente) a 100 (fria)
+elgin-tray ctl brightness 25          # brilho do modo atual
+elgin-tray ctl discover               # procura a lâmpada na rede e salva o IP
+elgin-tray ctl watch                  # mostra as mudanças até Ctrl+C
+```
+
+Ela lê a configuração de `%APPDATA%\elgin-tray\config.toml` (Windows) ou
+`~/.config/elgin-tray/config.toml` (Linux). Para usar outro arquivo, defina a variável
+`ELGIN_TRAY_CONFIG`. Enquanto a configuração pelo QR code não existe, preencha o arquivo à mão
+(o ID e a local key podem ser obtidos com o [tuya-local-key](https://github.com/vineetchoudhary/tuya-local-key)):
+
+```toml
+[[bulbs]]
+id = "o Device ID da lâmpada"
+name = "Lâmpada do quarto"
+local_key = "a local key (16 caracteres)"
+```
+
+O IP e a versão do protocolo são descobertos sozinhos e gravados no arquivo. A descoberta precisa
+**receber** pacotes UDP da lâmpada: no Windows, permita o `elgin-tray.exe` no firewall quando o aviso
+aparecer (redes privadas). Sem isso, preencha `ip` e `protocol_version = "3.5"` à mão.

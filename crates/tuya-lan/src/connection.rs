@@ -114,7 +114,13 @@ where
         read_frame(&mut transport, &mut decoder, &local_key),
     )
     .await
-    .map_err(|_| GatewayError::Timeout)??;
+    .map_err(|_| GatewayError::Timeout)?
+    // Com a chave errada a lâmpada fecha a conexão logo depois do pedido de negociação, sem
+    // responder (confirmado na lâmpada Elgin). O tinytuya dá o mesmo diagnóstico.
+    .map_err(|error| match error {
+        GatewayError::Disconnected => GatewayError::KeyRejected,
+        other => other,
+    })?;
     let negotiated = handshake.respond(&response).map_err(handshake_error)?;
     send(
         &mut transport,
@@ -467,6 +473,22 @@ mod tests {
     async fn a_wrong_key_is_rejected() {
         local(async {
             let lamp = FakeLamp::new(KEY, real_status());
+
+            let result = connect(&lamp, *b"chave-errada-123").await;
+
+            assert_eq!(result.err(), Some(GatewayError::KeyRejected));
+        })
+        .await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_wrong_key_answered_with_another_key_is_rejected_too() {
+        local(async {
+            let lamp = FakeLamp::new(KEY, real_status());
+            lamp.set_behaviour(Behaviour {
+                close_on_wrong_key: false,
+                ..Behaviour::default()
+            });
 
             let result = connect(&lamp, *b"chave-errada-123").await;
 

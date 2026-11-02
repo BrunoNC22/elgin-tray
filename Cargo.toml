@@ -37,6 +37,7 @@ sha2 = "0.10"
 socket2 = "0.6"
 tokio = { version = "1", default-features = false }
 toml = "1"
+windows-sys = "0.61"
 
 [workspace.lints.rust]
 # `deny` (e não `forbid`) para permitir `#[allow(unsafe_code)]` pontual em código de FFI,

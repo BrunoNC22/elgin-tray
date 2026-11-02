@@ -138,8 +138,13 @@ crates/
   com retcode). Lâmpadas mais antigas anunciam nas portas 6666 (texto) e 6667 (cifrado). Confirmado com uma
   captura real (`tools/tuya-vectors/capture_broadcast.py`).
 - Dados necessários por lâmpada: `device_id`, `ip`, `local_key`, `version`.
-- A lâmpada pode aceitar **poucas conexões locais simultâneas**: com o daemon rodando, ferramentas como o
-  tinytuya podem falhar ao conectar (e vice‑versa).
+- Comportamento confirmado na lâmpada real (#15): responde a consulta com cmd 16 e confirma comandos com
+  cmd 13; manda push (cmd 8) a cada mudança, inclusive as feitas por outra conexão; aceita **pelo menos duas
+  conexões locais ao mesmo tempo**; com a **chave errada, fecha a conexão** logo depois do pedido de
+  negociação, sem responder (tratado como `KeyRejected`).
+- **Firewall do Windows:** a descoberta precisa receber UDP da lâmpada (porta 7000). Na primeira execução o
+  Windows pergunta se libera o executável; se for negado, a descoberta não acha nada (a conexão TCP, que é
+  de saída, continua funcionando com o IP salvo).
 - DPs (data points) **confirmados na lâmpada real** (modelo "10W Smart color", categoria `dj`, PID na nuvem
   `ceut0xbogrwi6jnq`; o broadcast UDP anuncia outro product key, `keytfesxxsqewnqy`):
   - `20` liga/desliga (bool)

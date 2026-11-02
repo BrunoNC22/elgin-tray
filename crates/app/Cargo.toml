@@ -21,14 +21,20 @@ elgin-ipc = { workspace = true }
 elgin-icons = { workspace = true }
 elgin-updater = { workspace = true }
 elgin-panel = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time", "net"] }
 
 [target.'cfg(windows)'.dependencies]
 elgin-tray-windows = { workspace = true }
 elgin-platform-windows = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_System_Console"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 elgin-tray-kde = { workspace = true }
 elgin-platform-linux = { workspace = true }
+
+[dev-dependencies]
+elgin-application = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["macros"] }
 
 [lints]
 workspace = true

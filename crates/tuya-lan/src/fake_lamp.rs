@@ -30,6 +30,9 @@ pub(crate) struct Behaviour {
     pub(crate) answer_heartbeats: bool,
     /// Retcode das confirmações de comando (0 = aceito).
     pub(crate) control_retcode: u32,
+    /// Com a chave errada, fechar a conexão (como a lâmpada Elgin real faz) em vez de responder com
+    /// um quadro cifrado com a chave dela.
+    pub(crate) close_on_wrong_key: bool,
 }
 
 impl Default for Behaviour {
@@ -40,6 +43,7 @@ impl Default for Behaviour {
             answer_controls: true,
             answer_heartbeats: true,
             control_retcode: 0,
+            close_on_wrong_key: true,
         }
     }
 }
@@ -157,9 +161,13 @@ impl Inner {
             let frame = match self.decoder.next_frame(&key) {
                 Ok(Some(frame)) => frame,
                 Ok(None) => return,
-                // Cliente com outra chave: a lâmpada não entende e responde com a dela, como se
-                // fosse um pedido de negociação (o cliente vai falhar na autenticação).
+                // Cliente com outra chave: a lâmpada real fecha a conexão. A alternativa responde com
+                // a chave dela, como se fosse um pedido de negociação (o cliente falha na autenticação).
                 Err(_) => {
+                    if self.behaviour.close_on_wrong_key {
+                        self.closed = true;
+                        return;
+                    }
                     if self.behaviour.answer_handshake {
                         let proof = [0u8; 32];
                         let body = [REMOTE_NONCE.as_slice(), &proof].concat();

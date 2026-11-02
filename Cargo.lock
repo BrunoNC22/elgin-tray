@@ -207,6 +207,8 @@ dependencies = [
  "elgin-tuya-cloud",
  "elgin-tuya-lan",
  "elgin-updater",
+ "tokio",
+ "windows-sys",
 ]
 
 [[package]]
