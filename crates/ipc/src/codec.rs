@@ -40,7 +40,7 @@ impl LineDecoder {
     }
 
     /// A próxima mensagem completa; `None` se ainda não chegou uma linha inteira.
-    pub fn next<T: DeserializeOwned>(&mut self) -> Option<Result<T, CodecError>> {
+    pub fn next_message<T: DeserializeOwned>(&mut self) -> Option<Result<T, CodecError>> {
         loop {
             let Some(end) = self.buffer.iter().position(|&byte| byte == b'\n') else {
                 if self.buffer.len() > MAX_LINE {
@@ -92,11 +92,11 @@ mod tests {
         let mut decoder = LineDecoder::new();
 
         decoder.push(&bytes[..5]);
-        assert_eq!(decoder.next::<PanelMessage>(), None);
+        assert_eq!(decoder.next_message::<PanelMessage>(), None);
         decoder.push(&bytes[5..]);
 
-        assert_eq!(decoder.next::<PanelMessage>(), Some(Ok(hello())));
-        assert_eq!(decoder.next::<PanelMessage>(), None);
+        assert_eq!(decoder.next_message::<PanelMessage>(), Some(Ok(hello())));
+        assert_eq!(decoder.next_message::<PanelMessage>(), None);
     }
 
     #[test]
@@ -104,12 +104,12 @@ mod tests {
         let mut decoder = LineDecoder::new();
         decoder.push(&[encode(&hello()), encode(&PanelMessage::Close)].concat());
 
-        assert_eq!(decoder.next::<PanelMessage>(), Some(Ok(hello())));
+        assert_eq!(decoder.next_message::<PanelMessage>(), Some(Ok(hello())));
         assert_eq!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Ok(PanelMessage::Close))
         );
-        assert_eq!(decoder.next::<PanelMessage>(), None);
+        assert_eq!(decoder.next_message::<PanelMessage>(), None);
     }
 
     #[test]
@@ -119,11 +119,11 @@ mod tests {
         decoder.push(&encode(&PanelMessage::Close));
 
         assert!(matches!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Err(CodecError::Invalid(_)))
         ));
         assert_eq!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Ok(PanelMessage::Close))
         );
     }
@@ -135,7 +135,7 @@ mod tests {
         decoder.push(&encode(&PanelMessage::Close));
 
         assert_eq!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Ok(PanelMessage::Close))
         );
     }
@@ -145,14 +145,14 @@ mod tests {
         let mut decoder = LineDecoder::new();
         decoder.push(&vec![b'x'; MAX_LINE + 1]);
         assert_eq!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Err(CodecError::TooLong))
         );
 
         decoder.push(b"resto da linha longa\n");
         decoder.push(&encode(&PanelMessage::Close));
         assert_eq!(
-            decoder.next::<PanelMessage>(),
+            decoder.next_message::<PanelMessage>(),
             Some(Ok(PanelMessage::Close))
         );
     }
