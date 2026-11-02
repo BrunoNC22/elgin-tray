@@ -251,6 +251,15 @@ where
     }
 
     /// Clique, rolagem ou item de menu na bandeja. `anchor` é onde o ícone está na tela.
+    /// Logo depois de iniciar: sem lâmpada configurada, abre a configuração inicial no painel.
+    pub(crate) async fn on_start(&mut self) {
+        if self.settings.config().primary_bulb().is_none() {
+            self.on_setup_request(SetupRequestDto::Open).await;
+            self.open_panel(None);
+            self.publish();
+        }
+    }
+
     /// Um atalho global foi apertado.
     pub(crate) async fn on_hotkey(&mut self, action: HotkeyAction) {
         let snapshot = self.controller.snapshot();
@@ -739,6 +748,29 @@ mod tests {
         let first = saved.get(FavoriteSlot::try_new(0).unwrap());
         assert_eq!(first.hue().degrees(), 170);
         assert_eq!(first.saturation().permille(), 600);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn without_a_bulb_the_setup_opens_by_itself() {
+        let mut f = fixture(AppConfig::default());
+
+        f.core.on_start().await;
+
+        assert!(f.core.panel.open);
+        assert_eq!(
+            f.snapshot().setup,
+            Some(elgin_ipc::messages::SetupStateDto::AwaitingUserCode)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn with_a_bulb_the_start_opens_nothing() {
+        let mut f = configured();
+
+        f.core.on_start().await;
+
+        assert!(!f.core.panel.open);
+        assert_eq!(f.snapshot().setup, None);
     }
 
     #[tokio::test(start_paused = true)]

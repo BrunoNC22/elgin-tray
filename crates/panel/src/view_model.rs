@@ -41,6 +41,8 @@ pub struct PanelView {
     pub favorites: Vec<Rgb>,
     /// Configuração inicial em andamento (a tela mostra os passos dela no lugar dos controles).
     pub setup: Option<SetupStateDto>,
+    /// Mostra o botão "Configurar lâmpada" (sem lâmpada ou precisando reconfigurar).
+    pub can_configure: bool,
 }
 
 /// O view-model.
@@ -81,7 +83,14 @@ impl PanelViewModel {
 
     pub fn view(&self) -> PanelView {
         let snapshot = self.snapshot.as_ref();
-        let notice = match snapshot.map(|snapshot| snapshot.connection) {
+        let connection = snapshot.map(|snapshot| snapshot.connection);
+        let setup = snapshot.and_then(|snapshot| snapshot.setup.clone());
+        let can_configure = setup.is_none()
+            && matches!(
+                connection,
+                Some(ConnectionDto::NotConfigured | ConnectionDto::NeedsReconfiguration)
+            );
+        let notice = match connection {
             None => Some("Conectando ao app…"),
             Some(ConnectionDto::Online) => None,
             Some(ConnectionDto::NotConfigured) => Some("Nenhuma lâmpada configurada."),
@@ -129,7 +138,8 @@ impl PanelViewModel {
                         .collect()
                 })
                 .unwrap_or_default(),
-            setup: snapshot.and_then(|snapshot| snapshot.setup.clone()),
+            setup,
+            can_configure,
         }
     }
 
@@ -498,6 +508,27 @@ mod tests {
                 }
             }
         );
+    }
+
+    #[test]
+    fn offers_configuration_only_when_needed_and_not_already_open() {
+        let can_configure = |connection, setup: Option<SetupStateDto>| {
+            let mut model = PanelViewModel::new();
+            let mut snapshot = snapshot(connection, None);
+            snapshot.setup = setup;
+            model.on_snapshot(snapshot);
+            model.view().can_configure
+        };
+
+        assert!(can_configure(ConnectionDto::NotConfigured, None));
+        assert!(can_configure(ConnectionDto::NeedsReconfiguration, None));
+        assert!(!can_configure(ConnectionDto::Online, None));
+        assert!(!can_configure(ConnectionDto::Offline, None));
+        assert!(!can_configure(
+            ConnectionDto::NotConfigured,
+            Some(SetupStateDto::AwaitingUserCode)
+        ));
+        assert!(!PanelViewModel::new().view().can_configure);
     }
 
     #[test]

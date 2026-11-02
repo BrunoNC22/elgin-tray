@@ -54,6 +54,7 @@ pub(crate) async fn run<R, K, D, C, P, A, N, T>(
     N: Notifier,
 {
     tokio::pin!(exit);
+    core.on_start().await;
     let mut shown: Option<TrayViewModel> = None;
     loop {
         let view = core.tray_view();

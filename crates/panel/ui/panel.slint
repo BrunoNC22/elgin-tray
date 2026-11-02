@@ -1,7 +1,7 @@
 // O painel que abre colado na bandeja. Os valores vêm do view-model em Rust (view_model.rs);
 // cada gesto chama um callback, e o Rust devolve o novo estado.
 
-import { Switch, Palette } from "std-widgets.slint";
+import { Button, LineEdit, Palette, Spinner, Switch } from "std-widgets.slint";
 import { ColourDisc } from "colour_disc.slint";
 
 export { ColourDisc }
@@ -76,11 +76,143 @@ component TabButton inherits Rectangle {
     }
 }
 
+// Uma lâmpada da conta do Smart Life, na lista da configuração.
+export struct SetupDevice {
+    id: string,
+    name: string,
+    product: string,
+}
+
+// Os passos da configuração inicial (setup_view.rs decide o que cada um mostra).
+component SetupScreen inherits VerticalLayout {
+    in property <int> step; // 0 código, 1 QR, 2 escolha, 3 procurando, 4 pronto
+    in property <string> message;
+    in property <string> hint;
+    in property <string> error;
+    in property <string> close-label;
+    in property <image> qr;
+    in property <[SetupDevice]> devices;
+    callback code-submitted(string);
+    callback device-chosen(string);
+    callback closed();
+    spacing: 10px;
+
+    Text {
+        text: "Configurar lâmpada";
+        font-size: 16px;
+        font-weight: 700;
+        color: Palette.foreground;
+    }
+
+    Text {
+        text: root.message;
+        color: Palette.foreground;
+        wrap: word-wrap;
+    }
+
+    if root.error != "": Text {
+        text: root.error;
+        color: #e05252;
+        wrap: word-wrap;
+    }
+
+    if root.step == 0: HorizontalLayout {
+        spacing: 8px;
+        code := LineEdit {
+            placeholder-text: "Código de usuário";
+            accepted(text) => { root.code-submitted(text); }
+        }
+        Button {
+            text: "Continuar";
+            primary: true;
+            enabled: code.text != "";
+            clicked => { root.code-submitted(code.text); }
+        }
+    }
+
+    if root.step == 1: HorizontalLayout {
+        alignment: center;
+        Image {
+            source: root.qr;
+            width: 208px;
+            height: 208px;
+            image-rendering: pixelated;
+        }
+    }
+
+    if root.step == 2: VerticalLayout {
+        spacing: 6px;
+        for device in root.devices: Rectangle {
+            height: 48px;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: Palette.border;
+            background: touch.has-hover ? Palette.alternate-background : transparent;
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    Text {
+                        text: device.name;
+                        font-weight: 700;
+                        color: Palette.foreground;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: device.product;
+                        font-size: 11px;
+                        color: Palette.foreground;
+                        opacity: 0.7;
+                        overflow: elide;
+                    }
+                }
+            }
+            touch := TouchArea {
+                clicked => { root.device-chosen(device.id); }
+            }
+        }
+    }
+
+    if root.step == 3: HorizontalLayout {
+        alignment: center;
+        Spinner {
+            indeterminate: true;
+            width: 40px;
+            height: 40px;
+        }
+    }
+
+    if root.hint != "": Text {
+        text: root.hint;
+        font-size: 11px;
+        color: Palette.foreground;
+        opacity: 0.75;
+        wrap: word-wrap;
+    }
+
+    Rectangle {
+        vertical-stretch: 1;
+    }
+
+    HorizontalLayout {
+        alignment: end;
+        Button {
+            text: root.close-label;
+            primary: root.step == 4;
+            clicked => { root.closed(); }
+        }
+    }
+}
+
 export component Panel inherits Window {
     title: "elgin-tray";
     no-frame: true;
     always-on-top: true;
+    // Altura fixa: a janela não acompanha bem mudanças de tamanho (abas, configuração), e assim o
+    // painel continua colado na bandeja.
     width: 320px;
+    height: 490px;
     background: Palette.background;
 
     in property <string> bulb-name;
@@ -98,6 +230,15 @@ export component Panel inherits Window {
     in property <color> warm-colour;
     in property <color> cool-colour;
     in property <[color]> favorites;
+    in property <bool> can-configure;
+    in property <bool> setup-active;
+    in property <int> setup-step;
+    in property <string> setup-message;
+    in property <string> setup-hint;
+    in property <string> setup-error;
+    in property <string> setup-close-label;
+    in property <image> setup-qr;
+    in property <[SetupDevice]> setup-devices;
 
     callback power-toggled(bool);
     callback tab-selected(bool); // true = Cor
@@ -107,6 +248,10 @@ export component Panel inherits Window {
     callback favorite-applied(int);
     callback favorite-saved(int);
     callback close-requested();
+    callback configure-requested();
+    callback setup-code-submitted(string);
+    callback setup-device-chosen(string);
+    callback setup-closed();
 
     forward-focus: keys;
     keys := FocusScope {
@@ -138,110 +283,148 @@ export component Panel inherits Window {
                     vertical-alignment: center;
                     overflow: elide;
                 }
-                Switch {
+                if !root.setup-active: Switch {
                     checked: root.power-on;
                     enabled: root.controls-enabled;
                     toggled => { root.power-toggled(self.checked); }
                 }
             }
 
-            if root.notice != "": Text {
+            if root.notice != "" && !root.setup-active: Text {
                 text: root.notice;
                 color: #e8912d;
                 wrap: word-wrap;
             }
 
-            HorizontalLayout {
-                spacing: 8px;
-                TabButton {
-                    text: "Cor";
-                    selected: root.colour-tab;
-                    enabled: root.controls-enabled;
-                    clicked => { root.tab-selected(true); }
-                }
-                TabButton {
-                    text: "Branco";
-                    selected: !root.colour-tab;
-                    enabled: root.controls-enabled;
-                    clicked => { root.tab-selected(false); }
+            if root.can-configure: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Configurar lâmpada";
+                    primary: true;
+                    clicked => { root.configure-requested(); }
                 }
             }
 
-            if root.colour-tab: HorizontalLayout {
-                alignment: center;
-                ColourDisc {
-                    width: 220px;
-                    height: 220px;
-                    disc: root.disc;
-                    marker-x: root.marker-x;
-                    marker-y: root.marker-y;
-                    enabled: root.controls-enabled;
-                    picked(x, y) => { root.colour-picked(x, y); }
-                }
+            if root.setup-active: SetupScreen {
+                vertical-stretch: 1;
+                step: root.setup-step;
+                message: root.setup-message;
+                hint: root.setup-hint;
+                error: root.setup-error;
+                close-label: root.setup-close-label;
+                qr: root.setup-qr;
+                devices: root.setup-devices;
+                code-submitted(code) => { root.setup-code-submitted(code); }
+                device-chosen(id) => { root.setup-device-chosen(id); }
+                closed => { root.setup-closed(); }
             }
 
-            if !root.colour-tab: VerticalLayout {
-                spacing: 4px;
-                Text {
-                    text: "Temperatura";
-                    color: Palette.foreground;
-                }
-                GradientSlider {
-                    track: @linear-gradient(90deg, root.warm-colour 0%, root.cool-colour 100%);
-                    value: root.temperature;
-                    enabled: root.controls-enabled;
-                    changed(value) => { root.temperature-changed(value); }
-                }
-            }
+            if !root.setup-active: VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 12px;
 
-            VerticalLayout {
-                spacing: 4px;
                 HorizontalLayout {
-                    Text {
-                        text: "Brilho";
-                        color: Palette.foreground;
+                    vertical-stretch: 0;
+                    spacing: 8px;
+                    TabButton {
+                        text: "Cor";
+                        selected: root.colour-tab;
+                        enabled: root.controls-enabled;
+                        clicked => { root.tab-selected(true); }
                     }
-                    Text {
-                        text: root.brightness-percent + "%";
-                        color: Palette.foreground;
-                        horizontal-alignment: right;
+                    TabButton {
+                        text: "Branco";
+                        selected: !root.colour-tab;
+                        enabled: root.controls-enabled;
+                        clicked => { root.tab-selected(false); }
                     }
                 }
-                GradientSlider {
-                    track: @linear-gradient(90deg, #000000 0%, root.full-colour 100%);
-                    value: root.brightness;
-                    enabled: root.controls-enabled;
-                    changed(value) => { root.brightness-changed(value); }
-                }
-            }
 
-            VerticalLayout {
-                spacing: 4px;
-                Text {
-                    text: "Favoritas (clique direito salva a cor atual)";
-                    color: Palette.foreground;
-                    font-size: 11px;
-                    opacity: 0.7;
-                }
-                HorizontalLayout {
-                    spacing: 10px;
+                if root.colour-tab: HorizontalLayout {
+                    vertical-stretch: 0;
                     alignment: center;
-                    for colour[index] in root.favorites: Rectangle {
-                        width: 32px;
-                        height: 32px;
-                        border-radius: 16px;
-                        background: colour;
-                        border-width: 2px;
-                        border-color: Palette.border;
-                        opacity: root.controls-enabled ? 1.0 : 0.4;
-                        TouchArea {
-                            enabled: root.controls-enabled;
-                            pointer-event(event) => {
-                                if (event.kind == PointerEventKind.up) {
-                                    if (event.button == PointerEventButton.right) {
-                                        root.favorite-saved(index);
-                                    } else if (event.button == PointerEventButton.left) {
-                                        root.favorite-applied(index);
+                    ColourDisc {
+                        width: 220px;
+                        height: 220px;
+                        disc: root.disc;
+                        marker-x: root.marker-x;
+                        marker-y: root.marker-y;
+                        enabled: root.controls-enabled;
+                        picked(x, y) => { root.colour-picked(x, y); }
+                    }
+                }
+
+                if !root.colour-tab: VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 4px;
+                    Text {
+                        text: "Temperatura";
+                        color: Palette.foreground;
+                    }
+                    GradientSlider {
+                        track: @linear-gradient(90deg, root.warm-colour 0%, root.cool-colour 100%);
+                        value: root.temperature;
+                        enabled: root.controls-enabled;
+                        changed(value) => { root.temperature-changed(value); }
+                    }
+                }
+
+                // Espaço elástico: brilho e favoritas ficam no mesmo lugar nas duas abas.
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        Text {
+                            text: "Brilho";
+                            color: Palette.foreground;
+                        }
+                        Text {
+                            text: root.brightness-percent + "%";
+                            color: Palette.foreground;
+                            horizontal-alignment: right;
+                        }
+                    }
+                    GradientSlider {
+                        track: @linear-gradient(90deg, #000000 0%, root.full-colour 100%);
+                        value: root.brightness;
+                        enabled: root.controls-enabled;
+                        changed(value) => { root.brightness-changed(value); }
+                    }
+                }
+
+                VerticalLayout {
+                    vertical-stretch: 0;
+                    spacing: 4px;
+                    Text {
+                        text: "Favoritas (clique direito salva a cor atual)";
+                        color: Palette.foreground;
+                        font-size: 11px;
+                        opacity: 0.7;
+                    }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: center;
+                        for colour[index] in root.favorites: Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 16px;
+                            background: colour;
+                            border-width: 2px;
+                            border-color: Palette.border;
+                            opacity: root.controls-enabled ? 1.0 : 0.4;
+                            TouchArea {
+                                enabled: root.controls-enabled;
+                                pointer-event(event) => {
+                                    if (event.kind == PointerEventKind.up) {
+                                        if (event.button == PointerEventButton.right) {
+                                            root.favorite-saved(index);
+                                        } else if (event.button == PointerEventButton.left) {
+                                            root.favorite-applied(index);
+                                        }
                                     }
                                 }
                             }

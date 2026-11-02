@@ -4,7 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use elgin_domain::{ColorTemperature, Rgb};
-use elgin_ipc::messages::{DaemonMessage, PanelMessage};
+use elgin_ipc::messages::{DaemonMessage, PanelMessage, SetupRequestDto};
 use elgin_ipc::session::PanelClient;
 use elgin_ipc::transport;
 use slint::{ComponentHandle, ModelRc, VecModel, Weak};
@@ -12,8 +12,9 @@ use tokio::sync::mpsc;
 
 use crate::disc::DiscPoint;
 use crate::placement::Rect;
+use crate::setup_view::SetupView;
 use crate::view_model::{PanelView, PanelViewModel, Tab};
-use crate::{Panel, disc_slint_image};
+use crate::{Panel, SetupDevice, disc_slint_image, qr_slint_image};
 
 type SharedModel = Arc<Mutex<PanelViewModel>>;
 type Outgoing = mpsc::UnboundedSender<PanelMessage>;
@@ -99,6 +100,27 @@ fn connect_callbacks(window: &Panel, model: &SharedModel, outgoing: &Outgoing) {
     window.on_favorite_saved(move |slot| save(slot as f32, 0.0));
     let closing = outgoing.clone();
     window.on_close_requested(move || close_now(&closing));
+
+    let setup = |request: fn(String) -> SetupRequestDto| {
+        let model = Arc::clone(model);
+        let outgoing = outgoing.clone();
+        move |text: slint::SharedString| {
+            if let Ok(model) = model.lock() {
+                let _ = outgoing.send(model.setup(request(text.trim().to_owned())));
+            }
+        }
+    };
+    let open = setup(|_| SetupRequestDto::Open);
+    window.on_configure_requested(move || open(slint::SharedString::new()));
+    let submit = setup(|user_code| SetupRequestDto::SubmitUserCode { user_code });
+    window.on_setup_code_submitted(move |code| {
+        if !code.trim().is_empty() {
+            submit(code);
+        }
+    });
+    window.on_setup_device_chosen(setup(|device_id| SetupRequestDto::Choose { device_id }));
+    let cancel = setup(|_| SetupRequestDto::Cancel);
+    window.on_setup_closed(move || cancel(slint::SharedString::new()));
 }
 
 /// Avisa o daemon que o painel está fechando (já, antes de sair do loop) e fecha.
@@ -214,13 +236,9 @@ fn view(model: &SharedModel) -> PanelView {
 /// Passa o que o view-model mostra para as propriedades da janela.
 fn render(window: &Panel, view: &PanelView) {
     window.set_bulb_name(view.bulb_name.clone().into());
-    let notice = match (&view.setup, &view.notice) {
-        // As telas da configuração inicial chegam na #32.
-        (Some(_), _) => "Configuração inicial em andamento.".to_owned(),
-        (None, Some(notice)) => notice.clone(),
-        (None, None) => String::new(),
-    };
-    window.set_notice(notice.into());
+    window.set_notice(view.notice.clone().unwrap_or_default().into());
+    window.set_can_configure(view.can_configure);
+    render_setup(window, view.setup.as_ref().map(SetupView::of));
     window.set_controls_enabled(view.controls_enabled);
     window.set_power_on(view.power_on);
     window.set_colour_tab(view.tab == Tab::Colour);
@@ -232,6 +250,34 @@ fn render(window: &Panel, view: &PanelView) {
     window.set_full_colour(colour(view.full_colour));
     let favorites: Vec<slint::Color> = view.favorites.iter().copied().map(colour).collect();
     window.set_favorites(ModelRc::new(VecModel::from(favorites)));
+}
+
+/// A tela da configuração inicial (ou nada, se ela não está aberta). Pública para o exemplo
+/// `setup_preview`.
+pub fn render_setup(window: &Panel, setup: Option<SetupView>) {
+    window.set_setup_active(setup.is_some());
+    let Some(setup) = setup else { return };
+    window.set_setup_step(setup.step.index());
+    window.set_setup_message(setup.message.into());
+    window.set_setup_hint(setup.hint.into());
+    window.set_setup_error(setup.error.into());
+    window.set_setup_close_label(setup.close_label.into());
+    let qr = setup
+        .qr_content
+        .as_deref()
+        .and_then(qr_slint_image)
+        .unwrap_or_default();
+    window.set_setup_qr(qr);
+    let devices: Vec<SetupDevice> = setup
+        .devices
+        .into_iter()
+        .map(|device| SetupDevice {
+            id: device.id.into(),
+            name: device.name.into(),
+            product: device.product.into(),
+        })
+        .collect();
+    window.set_setup_devices(ModelRc::new(VecModel::from(devices)));
 }
 
 fn colour(rgb: Rgb) -> slint::Color {

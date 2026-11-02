@@ -1126,6 +1126,7 @@ version = "0.1.0"
 dependencies = [
  "elgin-domain",
  "elgin-ipc",
+ "qrcode",
  "slint",
  "slint-build",
  "tokio",
