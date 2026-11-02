@@ -1,5 +1,7 @@
 # elgin-tray
 
+[![CI](https://github.com/BrunoNC22/elgin-tray/actions/workflows/ci.yml/badge.svg)](https://github.com/BrunoNC22/elgin-tray/actions/workflows/ci.yml)
+
 Controle a sua lâmpada **Elgin Smart Color** (Tuya, Wi‑Fi) pela bandeja do sistema, no **Windows** e no
 **Linux (KDE Plasma)**, sem o app de celular e sem passar pela nuvem no dia a dia.
 

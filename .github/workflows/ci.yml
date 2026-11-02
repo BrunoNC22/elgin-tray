@@ -1,0 +1,53 @@
+# Verificação de todo push na main e de todo PR: formatação, lints e testes nos dois sistemas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Um push novo na mesma branch cancela a verificação anterior, que ficou obsoleta.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Formatação
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  check:
+    name: Clippy e testes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # Dependências de sistema do Linux: ainda nenhuma. Quando o painel (Slint) e a bandeja (ksni)
+      # forem implementados, instalar aqui o que eles exigirem (ex.: libxkbcommon-dev, libwayland-dev,
+      # libfontconfig-dev), mantendo a lista igual ao `depends` do PKGBUILD.
+      # - if: runner.os == 'Linux'
+      #   run: sudo apt-get update && sudo apt-get install -y <pacotes>
+
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
