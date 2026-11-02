@@ -10,6 +10,8 @@ publish.workspace = true
 [dependencies]
 elgin-domain = { workspace = true }
 elgin-application = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

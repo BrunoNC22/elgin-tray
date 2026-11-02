@@ -203,6 +203,8 @@ version = "0.1.0"
 dependencies = [
  "elgin-application",
  "elgin-domain",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
