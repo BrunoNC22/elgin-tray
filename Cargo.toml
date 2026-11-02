@@ -28,7 +28,9 @@ elgin-panel = { path = "crates/panel" }
 
 # Externas
 aes-gcm = "0.10"
+hmac = "0.12"
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", default-features = false }
 
 [workspace.lints.rust]

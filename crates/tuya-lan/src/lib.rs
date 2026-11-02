@@ -8,6 +8,7 @@
 
 mod frame;
 mod random;
+mod session;
 
 #[cfg(test)]
 mod test_vectors;
