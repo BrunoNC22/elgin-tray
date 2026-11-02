@@ -72,6 +72,8 @@ O repositório é **público**.
 | Releases | Só por tag `vX.Y.Z` (a versão do workspace precisa bater com a tag). Artefatos assinados com **zipsign**; a chave pública fica embutida no app. |
 | Instalação | Windows: executável em `%LOCALAPPDATA%\elgin-tray\`, sem admin. Arch: AUR `elgin-tray-bin` (`/usr/bin/elgin-tray`). |
 | Autostart | Windows: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Linux: `~/.config/autostart/elgin-tray.desktop`. Ativado na primeira execução; alternável no menu. |
+| Comandos e energia | Comandos de cor, branco, temperatura e brilho **ligam** a lâmpada se ela estiver desligada (decisão do usuário). O brilho fica sempre entre 1% e 100%; só o liga/desliga apaga. Em cena/música, comandos de brilho só ligam a lâmpada. Regra em `BulbState::apply` (`crates/domain/src/command.rs`). |
+| Favoritas | Guardam só **matiz e saturação**; aplicar mantém o brilho atual (100% se o modo não tem brilho). Só cores viram favorita (branco, cena e música não). "Próxima favorita" segue a cor atual em ciclo; se ela não é favorita, começa pela primeira. |
 | Dublês de teste | **Escritos à mão** (stubs, spies, fakes), sem `mockall`. |
 | Idioma | Código (tipos, funções, variáveis) em **inglês**. Comentários, docs, issues, commits e textos da interface em **português (pt-BR)**. |
 

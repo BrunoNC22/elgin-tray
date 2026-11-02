@@ -44,6 +44,13 @@ impl Brightness {
     pub fn percent(self) -> u8 {
         permille_to_percent(self.0)
     }
+
+    /// Soma `delta` pontos percentuais à porcentagem atual, sem sair de 1–100%.
+    pub fn stepped(self, delta: i8) -> Self {
+        let percent = (i16::from(self.percent()) + i16::from(delta)).clamp(1, 100);
+        // `percent` está em 1..=100 por causa do clamp.
+        Self(percent_to_permille(percent as u8))
+    }
 }
 
 #[cfg(test)]
@@ -102,6 +109,17 @@ mod tests {
         assert_eq!(percent(15), 2);
         assert_eq!(percent(655), 66);
         assert_eq!(percent(1000), 100);
+    }
+
+    #[test]
+    fn steps_by_percentage_points_within_1_to_100() {
+        let fifty = Brightness::from_percent(50).unwrap();
+
+        assert_eq!(fifty.stepped(10).percent(), 60);
+        assert_eq!(fifty.stepped(-49).percent(), 1);
+        assert_eq!(fifty.stepped(-50), Brightness::MIN);
+        assert_eq!(fifty.stepped(i8::MAX), Brightness::MAX);
+        assert_eq!(Brightness::MIN.stepped(i8::MIN), Brightness::MIN);
     }
 
     #[test]

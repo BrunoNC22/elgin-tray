@@ -7,12 +7,16 @@
 mod brightness;
 mod bulb;
 mod colour;
+mod command;
 mod error;
+mod favorites;
 mod percent;
 mod temperature;
 
 pub use brightness::Brightness;
 pub use bulb::{Bulb, BulbId, BulbName, BulbState, LightMode, Power};
 pub use colour::{Hsv, Hue, Rgb, Saturation};
+pub use command::BulbCommand;
 pub use error::DomainError;
+pub use favorites::{FavoriteColour, FavoriteSlot, Favorites};
 pub use temperature::ColorTemperature;
