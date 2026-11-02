@@ -42,6 +42,8 @@ pub enum PanelMessage {
     Setup {
         request: SetupRequestDto,
     },
+    /// Outra execução do app pediu para abrir o painel (instância única).
+    Activate,
     /// O painel vai fechar.
     Close,
 }
@@ -461,6 +463,7 @@ mod tests {
             PanelMessage::Setup {
                 request: SetupRequestDto::Cancel,
             },
+            PanelMessage::Activate,
             PanelMessage::Close,
         ];
         for message in panel {
