@@ -6,6 +6,7 @@
 // completo (#12). Até lá, parte delas só é usada nos testes.
 #![allow(dead_code)]
 
+mod dps;
 mod frame;
 mod random;
 mod session;
