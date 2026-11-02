@@ -108,8 +108,11 @@ crates/
 - Crates de um sistema só têm conteúdo nele (`#![cfg(...)]` no `lib.rs`) e entram no `app` por
   `[target.'cfg(...)'.dependencies]`. Dependências compartilhadas ficam em `[workspace.dependencies]`
   (nas crates: `dep = { workspace = true }`); lints em `[workspace.lints]`.
-- Para conferir o lado Linux a partir do Windows: `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings`
-  (alvo instalado com `rustup target add x86_64-unknown-linux-gnu`; só checa, não gera executável).
+- Para conferir o lado Linux a partir do Windows:
+  `cargo clippy --workspace --exclude elgin-tray --exclude elgin-tuya-cloud --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings`
+  (alvo instalado com `rustup target add x86_64-unknown-linux-gnu`; só checa, não gera executável). As duas crates
+  excluídas dependem do `ring` (TLS do `ureq`/`rustls`), cujo build precisa de um compilador C para o alvo; o
+  CI no Ubuntu cobre o resto.
 - Diferenças entre Windows e Linux ficam **só** nos adaptadores e na escolha feita pelo `app`
   (ex.: a política de atualização "instalar sozinho" vs "só avisar" é um valor injetado pelo `app`).
 - Portas principais (driven): `BulbGateway`, `BulbDiscovery`, `ConfigRepository`, `CloudAccount`,

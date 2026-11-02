@@ -4,12 +4,14 @@
 //! caso de uso e guarda outro para inspecionar ou roteirizar.
 
 mod clock;
+mod cloud;
 mod config;
 mod connection;
 mod gateway;
 mod observer;
 
 pub use clock::ManualClock;
+pub use cloud::StubCloudAccount;
 pub use config::FakeConfigRepository;
 pub use connection::{ConnectAttempt, ScriptedEvents, StubConnector, StubDiscovery};
 pub use gateway::FakeBulbGateway;

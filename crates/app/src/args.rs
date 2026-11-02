@@ -15,6 +15,7 @@ Comandos do ctl:
   brightness <brilho>                muda o brilho do modo atual (1-100%)
   discover                           procura a lâmpada na rede e mostra o IP
   watch                              mostra as mudanças da lâmpada até ser interrompido (Ctrl+C)
+  login <código de usuário>          login por QR code no Smart Life (guarda a sessão da nuvem)
 
 A configuração é lida de %APPDATA%\\elgin-tray\\config.toml (Windows) ou
 ~/.config/elgin-tray/config.toml (Linux); para usar outro arquivo, defina ELGIN_TRAY_CONFIG.";
@@ -34,6 +35,8 @@ pub(crate) enum CtlCommand {
     Status,
     Discover,
     Watch,
+    /// Login por QR code com o código de usuário do Smart Life.
+    Login(String),
     /// Um comando para a lâmpada.
     Apply(BulbCommand),
 }
@@ -57,6 +60,7 @@ fn parse_ctl(words: &[&str]) -> Result<CtlCommand, String> {
         ["status"] => Ok(CtlCommand::Status),
         ["discover"] => Ok(CtlCommand::Discover),
         ["watch"] => Ok(CtlCommand::Watch),
+        ["login", user_code] => Ok(CtlCommand::Login((*user_code).to_owned())),
         ["on"] => apply(BulbCommand::SetPower(Power::On)),
         ["off"] => apply(BulbCommand::SetPower(Power::Off)),
         ["toggle"] => apply(BulbCommand::TogglePower),
@@ -136,6 +140,10 @@ mod tests {
         assert_eq!(ctl("ctl discover"), CtlCommand::Discover);
         assert_eq!(ctl("ctl watch"), CtlCommand::Watch);
         assert_eq!(
+            ctl("ctl login Abc1234"),
+            CtlCommand::Login("Abc1234".to_owned())
+        );
+        assert_eq!(
             ctl("ctl on"),
             CtlCommand::Apply(BulbCommand::SetPower(Power::On))
         );
@@ -206,6 +214,7 @@ mod tests {
             "ctl white 10",
             "ctl brightness",
             "ctl status agora",
+            "ctl login",
             "ctl dance",
             "tray",
         ] {

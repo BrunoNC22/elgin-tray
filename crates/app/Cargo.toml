@@ -21,6 +21,7 @@ elgin-ipc = { workspace = true }
 elgin-icons = { workspace = true }
 elgin-updater = { workspace = true }
 elgin-panel = { workspace = true }
+qrcode = { workspace = true }
 tokio = { workspace = true, features = ["rt", "time", "net"] }
 
 [target.'cfg(windows)'.dependencies]
@@ -34,7 +35,7 @@ elgin-platform-linux = { workspace = true }
 
 [dev-dependencies]
 elgin-application = { workspace = true, features = ["testing"] }
-tokio = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "test-util"] }
 
 [lints]
 workspace = true

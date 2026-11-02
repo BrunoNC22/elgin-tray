@@ -10,6 +10,13 @@ publish.workspace = true
 [dependencies]
 elgin-domain = { workspace = true }
 elgin-application = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+ureq = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
 
 [lints]
 workspace = true

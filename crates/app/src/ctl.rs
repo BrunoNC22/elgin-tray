@@ -5,11 +5,15 @@
 
 use std::time::Duration;
 
+use qrcode::QrCode;
+use qrcode::render::unicode::Dense1x2;
+use tokio::time::Instant;
+
 use elgin_application::config::{BulbConfig, Settings};
 use elgin_application::credentials::Endpoint;
 use elgin_application::ports::{
-    BulbConnector, BulbDiscovery, BulbEvent, BulbEvents, BulbGateway, ConfigRepository,
-    GatewayError,
+    BulbConnector, BulbDiscovery, BulbEvent, BulbEvents, BulbGateway, CloudAccount,
+    ConfigRepository, GatewayError, LoginPoll,
 };
 use elgin_domain::{BulbState, LightMode, Power};
 
@@ -17,6 +21,10 @@ use crate::args::CtlCommand;
 
 /// Quanto esperar a lâmpada responder ao pedido de descoberta.
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(6);
+/// Intervalo entre as consultas do login por QR.
+const LOGIN_POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// Quanto esperar a confirmação do QR no celular (o QR expira em poucos minutos).
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(150);
 
 /// Para onde vão as mensagens (o terminal, no app; um gravador, nos testes).
 pub(crate) trait Output {
@@ -68,19 +76,25 @@ pub(crate) fn describe_state(state: &BulbState) -> String {
 }
 
 /// Executa um comando do ctl. O erro é a mensagem para o usuário.
-pub(crate) async fn run<R, K, D, O>(
+pub(crate) async fn run<R, K, D, C, O>(
     command: CtlCommand,
     settings: &mut Settings<R>,
     connector: &mut K,
     discovery: &mut D,
+    cloud: &mut C,
     out: &mut O,
 ) -> Result<(), String>
 where
     R: ConfigRepository,
     K: BulbConnector,
     D: BulbDiscovery,
+    C: CloudAccount,
     O: Output,
 {
+    // O login não precisa de lâmpada configurada.
+    if let CtlCommand::Login(user_code) = &command {
+        return login(user_code, settings, cloud, out).await;
+    }
     let bulb = settings.config().primary_bulb().cloned().ok_or_else(|| {
         "nenhuma lâmpada configurada: preencha o config.toml (veja o README)".to_owned()
     })?;
@@ -93,6 +107,7 @@ where
     };
 
     match command {
+        CtlCommand::Login(_) => unreachable!("tratado acima"),
         CtlCommand::Discover => {
             let endpoint = find_and_save(&bulb, settings, discovery, out).await?;
             out.line(&format!(
@@ -130,6 +145,62 @@ where
         }
     }
     Ok(())
+}
+
+/// Login por QR code: mostra o QR, espera a confirmação no celular e guarda a sessão no config.
+async fn login<R, C, O>(
+    user_code: &str,
+    settings: &mut Settings<R>,
+    cloud: &mut C,
+    out: &mut O,
+) -> Result<(), String>
+where
+    R: ConfigRepository,
+    C: CloudAccount,
+    O: Output,
+{
+    let login = cloud
+        .start_qr_login(user_code)
+        .await
+        .map_err(|error| error.to_string())?;
+    out.line("Leia este QR code no app Smart Life (+ → Escanear) e confirme o login:");
+    out.line(&render_qr(&login.qr_content));
+    out.line(&format!("(conteúdo do QR code: {})", login.qr_content));
+
+    let deadline = Instant::now() + LOGIN_TIMEOUT;
+    loop {
+        match cloud
+            .poll_login(&login)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            LoginPoll::Done(session) => {
+                settings
+                    .set_cloud_session(Some(session))
+                    .map_err(|error| error.to_string())?;
+                out.line("Login confirmado. A sessão da nuvem foi salva no config.toml.");
+                return Ok(());
+            }
+            LoginPoll::Pending if Instant::now() >= deadline => {
+                return Err(
+                    "o QR code não foi confirmado a tempo; rode o comando de novo".to_owned(),
+                );
+            }
+            LoginPoll::Pending => tokio::time::sleep(LOGIN_POLL_INTERVAL).await,
+        }
+    }
+}
+
+/// QR code em caracteres de bloco, claro sobre escuro (lê melhor em terminais de fundo escuro).
+fn render_qr(content: &str) -> String {
+    match QrCode::new(content) {
+        Ok(code) => code
+            .render::<Dense1x2>()
+            .dark_color(Dense1x2::Light)
+            .light_color(Dense1x2::Dark)
+            .build(),
+        Err(_) => String::new(),
+    }
 }
 
 /// Conecta na lâmpada. Sem endereço salvo, procura na rede; se o endereço salvo não responde,
@@ -217,9 +288,12 @@ fn describe_error(error: GatewayError) -> String {
 mod tests {
     use super::*;
     use elgin_application::config::AppConfig;
+    use elgin_application::config::CloudSession;
     use elgin_application::credentials::LocalKey;
+    use elgin_application::ports::{CloudError, QrLogin};
     use elgin_application::testing::{
-        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, StubConnector, StubDiscovery,
+        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, StubCloudAccount, StubConnector,
+        StubDiscovery,
     };
     use elgin_domain::{
         Brightness, BulbCommand, BulbId, BulbName, ColorTemperature, Hsv, Hue, Saturation,
@@ -266,6 +340,7 @@ mod tests {
         repository: FakeConfigRepository,
         connector: StubConnector,
         discovery: StubDiscovery,
+        cloud: StubCloudAccount,
         out: Recorded,
     }
 
@@ -279,6 +354,7 @@ mod tests {
             repository,
             connector: StubConnector::new(),
             discovery: StubDiscovery::new(),
+            cloud: StubCloudAccount::new(),
             out: Recorded::default(),
         }
     }
@@ -290,6 +366,7 @@ mod tests {
                 &mut self.settings,
                 &mut self.connector,
                 &mut self.discovery,
+                &mut self.cloud,
                 &mut self.out,
             )
             .await
@@ -485,5 +562,67 @@ mod tests {
             ]
         );
         assert!(error.contains("caiu"), "{error}");
+    }
+
+    fn qr_login() -> QrLogin {
+        QrLogin {
+            user_code: "Abc1234".to_owned(),
+            token: "token".to_owned(),
+            qr_content: "tuyaSmart--qrLogin?token=token".to_owned(),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn login_shows_the_qr_and_saves_the_session_once_confirmed() {
+        let mut f = fixture(Vec::new());
+        f.cloud.start_returns(Ok(qr_login()));
+        f.cloud.poll_returns(Ok(LoginPoll::Pending));
+        f.cloud
+            .poll_returns(Ok(LoginPoll::Done(CloudSession::new("sessao"))));
+
+        f.run(CtlCommand::Login("Abc1234".to_owned()))
+            .await
+            .unwrap();
+
+        assert_eq!(f.cloud.user_codes(), ["Abc1234"]);
+        assert_eq!(f.cloud.poll_count(), 2);
+        assert_eq!(
+            f.repository.saved().unwrap().cloud_session,
+            Some(CloudSession::new("sessao"))
+        );
+        assert!(
+            f.out.0[1].contains('█') || f.out.0[1].contains('▀'),
+            "QR desenhado: {}",
+            f.out.0[1]
+        );
+        assert!(f.out.0.last().unwrap().contains("Login confirmado"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn login_with_an_invalid_user_code_shows_the_reason() {
+        let mut f = fixture(Vec::new());
+        f.cloud
+            .start_returns(Err(CloudError::Rejected("user code invalid".to_owned())));
+
+        let error = f
+            .run(CtlCommand::Login("errado1".to_owned()))
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("user code invalid"), "{error}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn login_gives_up_when_the_qr_is_not_confirmed_in_time() {
+        let mut f = fixture(Vec::new());
+        f.cloud.start_returns(Ok(qr_login()));
+
+        let error = f
+            .run(CtlCommand::Login("Abc1234".to_owned()))
+            .await
+            .unwrap_err();
+
+        assert!(error.contains("não foi confirmado a tempo"), "{error}");
+        assert_eq!(f.repository.saved().unwrap().cloud_session, None);
     }
 }
