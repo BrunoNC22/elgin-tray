@@ -1,0 +1,32 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Segredos da lâmpada (local key, device id, credenciais da nuvem Tuya)
+config.toml
+config.json
+devices.json
+snapshot.json
+tinytuya.json
+tuya-raw.json
+.env
+.env.*
+
+# Logs
+*.log
+
+# IDEs / editores
+.idea/
+.vscode/
+*.swp
+*~
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Claude Code (configurações locais)
+.claude/settings.local.json
+CLAUDE.local.md
