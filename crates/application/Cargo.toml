@@ -16,3 +16,6 @@ workspace = true
 [features]
 # Expõe os dublês de teste das portas (stubs, spies, fakes) para os testes de outras crates.
 testing = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

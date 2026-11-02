@@ -26,6 +26,9 @@ elgin-platform-linux = { path = "crates/platform-linux" }
 elgin-updater = { path = "crates/updater" }
 elgin-panel = { path = "crates/panel" }
 
+# Externas
+tokio = { version = "1", default-features = false }
+
 [workspace.lints.rust]
 # `deny` (e não `forbid`) para permitir `#[allow(unsafe_code)]` pontual em código de FFI,
 # sempre com um comentário explicando o motivo.
