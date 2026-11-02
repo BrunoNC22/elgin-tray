@@ -7,14 +7,16 @@ mod panel;
 use std::future::Future;
 use std::time::Instant;
 
-use elgin_application::ports::{BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository};
+use elgin_application::ports::{
+    AutostartRegistrar, BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository,
+};
 use elgin_application::tray::{TrayAction, TrayViewModel};
 use elgin_ipc::messages::PanelMessage;
 use elgin_ipc::session::{DaemonChannels, serve_client};
 use elgin_ipc::transport::IpcListener;
 use tokio::sync::mpsc;
 
-pub(crate) use self::core::{DaemonCore, TrayOutcome};
+pub(crate) use self::core::{Adapters, DaemonCore, TrayOutcome};
 pub(crate) use self::panel::{Anchor, ChildPanel};
 
 /// Uma interação com o ícone da bandeja.
@@ -32,8 +34,8 @@ pub(crate) trait TrayOutput {
 
 /// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis e
 /// as ações da bandeja, e mostra na bandeja cada mudança, até "Sair" ou `exit` terminar.
-pub(crate) async fn run<R, K, D, C, P, T>(
-    mut core: DaemonCore<R, K, D, C, P>,
+pub(crate) async fn run<R, K, D, C, P, A, T>(
+    mut core: DaemonCore<R, K, D, C, P, A>,
     mut requests: mpsc::UnboundedReceiver<PanelMessage>,
     mut tray_events: mpsc::UnboundedReceiver<TrayEvent>,
     tray: &mut T,
@@ -45,6 +47,7 @@ pub(crate) async fn run<R, K, D, C, P, T>(
     D: BulbDiscovery + Clone,
     C: CloudAccount + Clone,
     P: panel::PanelProcess,
+    A: AutostartRegistrar,
 {
     tokio::pin!(exit);
     let mut shown: Option<TrayViewModel> = None;

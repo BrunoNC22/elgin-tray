@@ -3,11 +3,11 @@
 
 use std::time::{Duration, Instant};
 
-use elgin_application::config::Settings;
+use elgin_application::config::{Settings, toggle_autostart};
 use elgin_application::controller::{BulbController, DEFAULT_MIN_SEND_INTERVAL};
 use elgin_application::ports::{
-    BulbConnector, BulbDiscovery, BulbEvent, BulbObserver, Clock, CloudAccount, ConfigRepository,
-    ControllerEvent,
+    AutostartRegistrar, BulbConnector, BulbDiscovery, BulbEvent, BulbObserver, Clock, CloudAccount,
+    ConfigRepository, ControllerEvent,
 };
 use elgin_application::setup::{BulbSetup, RecoveryError, SetupState, recover_local_key};
 use elgin_application::status::ConnectionStatus;
@@ -48,9 +48,18 @@ pub(crate) enum TrayOutcome {
     Quit,
 }
 
+/// Os adaptadores de que o núcleo precisa (as portas da aplicação e o processo do painel).
+pub(crate) struct Adapters<K, D, C, P, A> {
+    pub(crate) connector: K,
+    pub(crate) discovery: D,
+    pub(crate) cloud: C,
+    pub(crate) panel: P,
+    pub(crate) autostart: A,
+}
+
 type Controller<K> = BulbController<<K as BulbConnector>::Gateway, NoopObserver, TokioClock>;
 
-pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P> {
+pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A> {
     settings: Settings<R>,
     connector: K,
     discovery: D,
@@ -61,29 +70,35 @@ pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P> {
     setup_poll_at: Option<Instant>,
     recovery_retry_at: Option<Instant>,
     panel: P,
+    autostart: A,
     snapshots: watch::Sender<Option<SnapshotDto>>,
     update_policy: UpdatePolicy,
     /// Quando o painel avisou que fechou.
     panel_closed_at: Option<Instant>,
 }
 
-impl<R, K, D, C, P> DaemonCore<R, K, D, C, P>
+impl<R, K, D, C, P, A> DaemonCore<R, K, D, C, P, A>
 where
     R: ConfigRepository,
     K: BulbConnector + Clone,
     D: BulbDiscovery + Clone,
     C: CloudAccount + Clone,
     P: PanelProcess,
+    A: AutostartRegistrar,
 {
     pub(crate) fn new(
         settings: Settings<R>,
-        connector: K,
-        discovery: D,
-        cloud: C,
-        panel: P,
+        adapters: Adapters<K, D, C, P, A>,
         snapshots: watch::Sender<Option<SnapshotDto>>,
         update_policy: UpdatePolicy,
     ) -> Self {
+        let Adapters {
+            connector,
+            discovery,
+            cloud,
+            panel,
+            autostart,
+        } = adapters;
         let mut core = Self {
             settings,
             connector,
@@ -95,6 +110,7 @@ where
             setup_poll_at: None,
             recovery_retry_at: None,
             panel,
+            autostart,
             snapshots,
             update_policy,
             panel_closed_at: None,
@@ -246,10 +262,9 @@ where
                 self.open_panel(anchor);
             }
             TrayAction::Menu(MenuAction::ToggleAutostart) => {
-                // O registro no sistema (Run do Windows / autostart do Linux) chega na #33.
-                let enabled = !self.settings.config().autostart.unwrap_or(false);
-                if let Err(error) = self.settings.set_autostart(enabled) {
-                    log::warn!("não foi possível salvar a preferência de autostart: {error}");
+                match toggle_autostart(&mut self.settings, &mut self.autostart) {
+                    Ok(enabled) => log::info!("iniciar com o sistema: {enabled}"),
+                    Err(error) => log::warn!("não foi possível trocar o autostart: {error}"),
                 }
             }
             TrayAction::Menu(MenuAction::CheckUpdates | MenuAction::ShowUpdate) => {
@@ -424,8 +439,8 @@ mod tests {
     use elgin_application::credentials::{Endpoint, LocalKey};
     use elgin_application::ports::{CloudDevice, CloudDevices, GatewayError, LoginPoll, QrLogin};
     use elgin_application::testing::{
-        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, StubCloudAccount, StubConnector,
-        StubDiscovery,
+        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, SpyAutostart, StubCloudAccount,
+        StubConnector, StubDiscovery,
     };
     use elgin_domain::{
         Brightness, BulbId, BulbName, BulbState, ColorTemperature, LightMode, Power,
@@ -433,8 +448,14 @@ mod tests {
     use elgin_ipc::messages::{CommandDto, ConnectionDto, StateDto};
     use std::net::{IpAddr, Ipv4Addr};
 
-    type Core =
-        DaemonCore<FakeConfigRepository, StubConnector, StubDiscovery, StubCloudAccount, FakePanel>;
+    type Core = DaemonCore<
+        FakeConfigRepository,
+        StubConnector,
+        StubDiscovery,
+        StubCloudAccount,
+        FakePanel,
+        SpyAutostart,
+    >;
 
     fn white(percent: u8) -> BulbState {
         BulbState {
@@ -468,6 +489,7 @@ mod tests {
         connector: StubConnector,
         discovery: StubDiscovery,
         cloud: StubCloudAccount,
+        autostart: SpyAutostart,
         snapshots: watch::Receiver<Option<SnapshotDto>>,
     }
 
@@ -476,13 +498,17 @@ mod tests {
         let connector = StubConnector::new();
         let discovery = StubDiscovery::new();
         let cloud = StubCloudAccount::new();
+        let autostart = SpyAutostart::new();
         let (sender, snapshots) = watch::channel(None);
         let core = Core::new(
             Settings::load(repository.clone()).unwrap(),
-            connector.clone(),
-            discovery.clone(),
-            cloud.clone(),
-            FakePanel::default(),
+            Adapters {
+                connector: connector.clone(),
+                discovery: discovery.clone(),
+                cloud: cloud.clone(),
+                panel: FakePanel::default(),
+                autostart: autostart.clone(),
+            },
             sender,
             UpdatePolicy::AutoInstall,
         );
@@ -492,6 +518,7 @@ mod tests {
             connector,
             discovery,
             cloud,
+            autostart,
             snapshots,
         }
     }
@@ -812,6 +839,7 @@ mod tests {
             .on_tray_action(TrayAction::Menu(MenuAction::ToggleAutostart), None)
             .await;
         assert_eq!(f.repository.saved().unwrap().autostart, Some(true));
+        assert_eq!(f.autostart.calls(), [true]);
 
         f.core
             .on_tray_action(TrayAction::Menu(MenuAction::Configure), None)

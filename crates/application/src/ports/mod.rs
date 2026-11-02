@@ -1,5 +1,6 @@
 //! Portas: o que a aplicação precisa do mundo de fora. Os adaptadores implementam estes traits.
 
+mod autostart;
 mod clock;
 mod cloud;
 mod config;
@@ -7,6 +8,7 @@ mod connection;
 mod gateway;
 mod observer;
 
+pub use autostart::AutostartRegistrar;
 pub use clock::Clock;
 pub use cloud::{CloudAccount, CloudDevice, CloudDevices, CloudError, LoginPoll, QrLogin};
 pub use config::{ConfigError, ConfigRepository};

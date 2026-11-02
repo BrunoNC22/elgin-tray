@@ -17,7 +17,8 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use elgin_application::config::Settings;
+use elgin_application::config::{Settings, apply_autostart};
+use elgin_application::ports::AutostartRegistrar;
 use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
 use elgin_ipc::session::DaemonChannels;
@@ -27,7 +28,7 @@ use elgin_tuya_lan::{TuyaDiscovery, TuyaLanConnector};
 use tokio::sync::{mpsc, watch};
 
 use crate::args::{CtlCommand, Mode, USAGE};
-use crate::daemon::{ChildPanel, DaemonCore};
+use crate::daemon::{Adapters, ChildPanel, DaemonCore};
 
 /// Como as atualizações chegam: no Windows o app instala sozinho; no Linux (pacote AUR) só avisa.
 const UPDATE_POLICY: UpdatePolicy = if cfg!(windows) {
@@ -187,16 +188,27 @@ async fn serve(
     tray_events: mpsc::UnboundedReceiver<daemon::TrayEvent>,
     tray: &mut impl daemon::TrayOutput,
 ) -> Result<(), String> {
-    let settings = load_settings()?;
+    let mut settings = load_settings()?;
+    let mut autostart = autostart_registrar()?;
+    // Em desenvolvimento, não registra o executável de `target/` para iniciar com o sistema.
+    if cfg!(not(debug_assertions)) {
+        match apply_autostart(&mut settings, &mut autostart, true) {
+            Ok(enabled) => log::info!("iniciar com o sistema: {enabled}"),
+            Err(error) => log::warn!("não foi possível aplicar o autostart: {error}"),
+        }
+    }
     let (requests_sender, requests) = mpsc::unbounded_channel();
     let (snapshots_sender, snapshots) = watch::channel(None);
     let (shutdown_sender, shutdown) = watch::channel(false);
     let core = DaemonCore::new(
         settings,
-        TuyaLanConnector::default(),
-        TuyaDiscovery::default(),
-        TuyaCloud::new(UreqClient::default(), SystemEnv),
-        ChildPanel::default(),
+        Adapters {
+            connector: TuyaLanConnector::default(),
+            discovery: TuyaDiscovery::default(),
+            cloud: TuyaCloud::new(UreqClient::default(), SystemEnv),
+            panel: ChildPanel::default(),
+            autostart,
+        },
         snapshots_sender,
         UPDATE_POLICY,
     );
@@ -215,6 +227,18 @@ async fn serve(
     let _ = shutdown_sender.send(true);
     log::info!("elgin-tray encerrado");
     Ok(())
+}
+
+#[cfg(windows)]
+fn autostart_registrar() -> Result<impl AutostartRegistrar, String> {
+    elgin_platform_windows::WindowsAutostart::for_current_exe()
+        .map_err(|error| format!("caminho do executável: {error}"))
+}
+
+#[cfg(target_os = "linux")]
+fn autostart_registrar() -> Result<impl AutostartRegistrar, String> {
+    elgin_platform_linux::DesktopAutostart::for_current_exe()
+        .map_err(|error| format!("pasta de autostart: {error}"))
 }
 
 fn finish(result: Result<(), String>, log_path: Option<PathBuf>) -> ExitCode {

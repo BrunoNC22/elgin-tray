@@ -368,3 +368,114 @@ mod tests {
         );
     }
 }
+
+/// Aplica a preferência de iniciar com o sistema ao abrir o app.
+///
+/// Sem preferência salva (primeira execução), usa `first_run_default` e, se for ligar, grava a
+/// escolha. Com preferência salva, reaplica (conserta o registro se o executável mudou de lugar).
+pub fn apply_autostart<R: ConfigRepository, A: crate::ports::AutostartRegistrar>(
+    settings: &mut Settings<R>,
+    registrar: &mut A,
+    first_run_default: bool,
+) -> Result<bool, String> {
+    let enabled = match settings.config().autostart {
+        Some(enabled) => enabled,
+        None if first_run_default => {
+            settings
+                .set_autostart(true)
+                .map_err(|error| error.to_string())?;
+            true
+        }
+        None => return Ok(false),
+    };
+    registrar.set_enabled(enabled)?;
+    Ok(enabled)
+}
+
+/// O usuário trocou a opção "Iniciar com o sistema": grava e aplica. Devolve o novo valor.
+pub fn toggle_autostart<R: ConfigRepository, A: crate::ports::AutostartRegistrar>(
+    settings: &mut Settings<R>,
+    registrar: &mut A,
+) -> Result<bool, String> {
+    let enabled = settings.config().autostart != Some(true);
+    registrar.set_enabled(enabled)?;
+    settings
+        .set_autostart(enabled)
+        .map_err(|error| error.to_string())?;
+    Ok(enabled)
+}
+
+#[cfg(test)]
+mod autostart_tests {
+    use super::*;
+    use crate::testing::{FakeConfigRepository, SpyAutostart};
+
+    fn settings(autostart: Option<bool>) -> (Settings<FakeConfigRepository>, FakeConfigRepository) {
+        let repository = FakeConfigRepository::with(AppConfig {
+            autostart,
+            ..AppConfig::default()
+        });
+        (Settings::load(repository.clone()).unwrap(), repository)
+    }
+
+    #[test]
+    fn the_first_run_turns_it_on_and_remembers() {
+        let (mut settings, repository) = settings(None);
+        let mut registrar = SpyAutostart::new();
+
+        assert_eq!(
+            apply_autostart(&mut settings, &mut registrar, true),
+            Ok(true)
+        );
+        assert_eq!(registrar.calls(), [true]);
+        assert_eq!(repository.saved().unwrap().autostart, Some(true));
+    }
+
+    #[test]
+    fn a_first_run_without_default_changes_nothing() {
+        let (mut settings, repository) = settings(None);
+        let mut registrar = SpyAutostart::new();
+
+        assert_eq!(
+            apply_autostart(&mut settings, &mut registrar, false),
+            Ok(false)
+        );
+        assert!(registrar.calls().is_empty());
+        assert_eq!(repository.saved().unwrap().autostart, None);
+    }
+
+    #[test]
+    fn a_saved_choice_is_applied_again() {
+        for choice in [true, false] {
+            let (mut settings, _) = settings(Some(choice));
+            let mut registrar = SpyAutostart::new();
+
+            assert_eq!(
+                apply_autostart(&mut settings, &mut registrar, true),
+                Ok(choice)
+            );
+            assert_eq!(registrar.calls(), [choice]);
+        }
+    }
+
+    #[test]
+    fn toggling_saves_and_applies_the_opposite() {
+        let (mut settings, repository) = settings(Some(true));
+        let mut registrar = SpyAutostart::new();
+
+        assert_eq!(toggle_autostart(&mut settings, &mut registrar), Ok(false));
+        assert_eq!(registrar.calls(), [false]);
+        assert_eq!(repository.saved().unwrap().autostart, Some(false));
+
+        assert_eq!(toggle_autostart(&mut settings, &mut registrar), Ok(true));
+    }
+
+    #[test]
+    fn a_registry_failure_is_reported() {
+        let (mut settings, _) = settings(Some(true));
+        let mut registrar = SpyAutostart::new();
+        registrar.fail_next();
+
+        assert!(apply_autostart(&mut settings, &mut registrar, true).is_err());
+    }
+}

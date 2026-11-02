@@ -10,5 +10,8 @@ publish.workspace = true
 [dependencies]
 elgin-application = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+directories = { workspace = true }
+
 [lints]
 workspace = true

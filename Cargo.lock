@@ -1136,6 +1136,7 @@ dependencies = [
 name = "elgin-platform-linux"
 version = "0.1.0"
 dependencies = [
+ "directories",
  "elgin-application",
 ]
 
@@ -1144,6 +1145,7 @@ name = "elgin-platform-windows"
 version = "0.1.0"
 dependencies = [
  "elgin-application",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
