@@ -7,6 +7,7 @@ mod config;
 mod connection;
 mod gateway;
 mod hotkeys;
+mod notifier;
 mod observer;
 
 pub use autostart::AutostartRegistrar;
@@ -16,4 +17,5 @@ pub use config::{ConfigError, ConfigRepository};
 pub use connection::{BulbConnector, BulbDiscovery, BulbEvent, BulbEvents};
 pub use gateway::{BulbGateway, GatewayError};
 pub use hotkeys::HotkeyRegistrar;
+pub use notifier::Notifier;
 pub use observer::{BulbObserver, ControllerEvent};

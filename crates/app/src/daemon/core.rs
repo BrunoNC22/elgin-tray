@@ -8,7 +8,7 @@ use elgin_application::controller::{BulbController, DEFAULT_MIN_SEND_INTERVAL};
 use elgin_application::hotkeys::{HotkeyAction, hotkey_command};
 use elgin_application::ports::{
     AutostartRegistrar, BulbConnector, BulbDiscovery, BulbEvent, BulbObserver, Clock, CloudAccount,
-    ConfigRepository, ControllerEvent,
+    ConfigRepository, ControllerEvent, Notifier,
 };
 use elgin_application::setup::{BulbSetup, RecoveryError, SetupState, recover_local_key};
 use elgin_application::status::ConnectionStatus;
@@ -50,17 +50,18 @@ pub(crate) enum TrayOutcome {
 }
 
 /// Os adaptadores de que o núcleo precisa (as portas da aplicação e o processo do painel).
-pub(crate) struct Adapters<K, D, C, P, A> {
+pub(crate) struct Adapters<K, D, C, P, A, N> {
     pub(crate) connector: K,
     pub(crate) discovery: D,
     pub(crate) cloud: C,
     pub(crate) panel: P,
     pub(crate) autostart: A,
+    pub(crate) notifier: N,
 }
 
 type Controller<K> = BulbController<<K as BulbConnector>::Gateway, NoopObserver, TokioClock>;
 
-pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A> {
+pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A, N> {
     settings: Settings<R>,
     connector: K,
     discovery: D,
@@ -72,13 +73,14 @@ pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A> {
     recovery_retry_at: Option<Instant>,
     panel: P,
     autostart: A,
+    notifier: N,
     snapshots: watch::Sender<Option<SnapshotDto>>,
     update_policy: UpdatePolicy,
     /// Quando o painel avisou que fechou.
     panel_closed_at: Option<Instant>,
 }
 
-impl<R, K, D, C, P, A> DaemonCore<R, K, D, C, P, A>
+impl<R, K, D, C, P, A, N> DaemonCore<R, K, D, C, P, A, N>
 where
     R: ConfigRepository,
     K: BulbConnector + Clone,
@@ -86,10 +88,11 @@ where
     C: CloudAccount + Clone,
     P: PanelProcess,
     A: AutostartRegistrar,
+    N: Notifier,
 {
     pub(crate) fn new(
         settings: Settings<R>,
-        adapters: Adapters<K, D, C, P, A>,
+        adapters: Adapters<K, D, C, P, A, N>,
         snapshots: watch::Sender<Option<SnapshotDto>>,
         update_policy: UpdatePolicy,
     ) -> Self {
@@ -99,6 +102,7 @@ where
             cloud,
             panel,
             autostart,
+            notifier,
         } = adapters;
         let mut core = Self {
             settings,
@@ -112,6 +116,7 @@ where
             recovery_retry_at: None,
             panel,
             autostart,
+            notifier,
             snapshots,
             update_policy,
             panel_closed_at: None,
@@ -368,6 +373,10 @@ where
                 log::warn!("a chave não pôde ser recuperada ({reason}); é preciso reconfigurar");
                 self.controller
                     .set_connection(ConnectionStatus::NeedsReconfiguration);
+                self.notifier.notify(
+                    "A lâmpada precisa ser reconfigurada",
+                    "Ela recusou a chave e não foi possível buscar a nova.                      Use \"Reconfigurar lâmpada\" no menu.",
+                );
             }
             Err(RecoveryError::Temporary(reason)) => {
                 log::info!("recuperação da chave adiada ({reason})");
@@ -449,8 +458,8 @@ mod tests {
     use elgin_application::credentials::{Endpoint, LocalKey};
     use elgin_application::ports::{CloudDevice, CloudDevices, GatewayError, LoginPoll, QrLogin};
     use elgin_application::testing::{
-        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, SpyAutostart, StubCloudAccount,
-        StubConnector, StubDiscovery,
+        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, SpyAutostart, SpyNotifier,
+        StubCloudAccount, StubConnector, StubDiscovery,
     };
     use elgin_domain::{
         Brightness, BulbId, BulbName, BulbState, ColorTemperature, LightMode, Power,
@@ -465,6 +474,7 @@ mod tests {
         StubCloudAccount,
         FakePanel,
         SpyAutostart,
+        SpyNotifier,
     >;
 
     fn white(percent: u8) -> BulbState {
@@ -500,6 +510,7 @@ mod tests {
         discovery: StubDiscovery,
         cloud: StubCloudAccount,
         autostart: SpyAutostart,
+        notifier: SpyNotifier,
         snapshots: watch::Receiver<Option<SnapshotDto>>,
     }
 
@@ -509,6 +520,7 @@ mod tests {
         let discovery = StubDiscovery::new();
         let cloud = StubCloudAccount::new();
         let autostart = SpyAutostart::new();
+        let notifier = SpyNotifier::new();
         let (sender, snapshots) = watch::channel(None);
         let core = Core::new(
             Settings::load(repository.clone()).unwrap(),
@@ -518,6 +530,7 @@ mod tests {
                 cloud: cloud.clone(),
                 panel: FakePanel::default(),
                 autostart: autostart.clone(),
+                notifier: notifier.clone(),
             },
             sender,
             UpdatePolicy::AutoInstall,
@@ -529,6 +542,7 @@ mod tests {
             discovery,
             cloud,
             autostart,
+            notifier,
             snapshots,
         }
     }
@@ -670,6 +684,10 @@ mod tests {
 
         assert_eq!(f.snapshot().connection, ConnectionDto::NeedsReconfiguration);
         assert_eq!(f.core.next_deadline(), None);
+        let sent = f.notifier.sent();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, "A lâmpada precisa ser reconfigurada");
+        assert!(sent[0].1.contains("Reconfigurar lâmpada"));
     }
 
     #[tokio::test(start_paused = true)]

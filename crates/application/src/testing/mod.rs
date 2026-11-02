@@ -10,6 +10,7 @@ mod config;
 mod connection;
 mod gateway;
 mod hotkeys;
+mod notifier;
 mod observer;
 
 pub use autostart::SpyAutostart;
@@ -19,4 +20,5 @@ pub use config::FakeConfigRepository;
 pub use connection::{ConnectAttempt, ScriptedEvents, StubConnector, StubDiscovery};
 pub use gateway::FakeBulbGateway;
 pub use hotkeys::SpyHotkeys;
+pub use notifier::SpyNotifier;
 pub use observer::SpyObserver;

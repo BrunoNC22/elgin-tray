@@ -21,7 +21,7 @@ use elgin_application::config::{HotkeyBindings, Settings, apply_autostart};
 use elgin_application::hotkeys::HotkeyAction;
 #[cfg(windows)]
 use elgin_application::hotkeys::register_hotkeys;
-use elgin_application::ports::AutostartRegistrar;
+use elgin_application::ports::{AutostartRegistrar, Notifier};
 use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
 use elgin_ipc::session::DaemonChannels;
@@ -93,14 +93,14 @@ fn run_daemon() -> ExitCode {
                 return Ok(());
             };
             let _ = started_sender.send(true);
-            let waker: elgin_tray_windows::TrayWaker = waker_receiver
+            let (waker, notifier): (elgin_tray_windows::TrayWaker, _) = waker_receiver
                 .recv()
                 .map_err(|_| "a bandeja não iniciou".to_owned())?;
             let mut tray = WindowsTray {
                 shared: daemon_shared,
                 waker,
             };
-            let result = serve(listener, tray_events, &mut tray).await;
+            let result = serve(listener, tray_events, &mut tray, notifier).await;
             waker.quit();
             result
         })
@@ -118,8 +118,8 @@ fn run_daemon() -> ExitCode {
                 });
                 let _ = tray_sender.send(daemon::TrayEvent { action, anchor });
             },
-            move |waker| {
-                let _ = waker_sender.send(waker);
+            move |waker, notifier| {
+                let _ = waker_sender.send((waker, notifier));
             },
         ),
         _ => Ok(()),
@@ -158,13 +158,24 @@ fn run_daemon() -> ExitCode {
         };
         // Sem bandeja ainda: o remetente fica vivo para o canal não fechar.
         let (_tray_sender, tray_events) = mpsc::unbounded_channel();
-        serve(listener, tray_events, &mut NoTray).await
+        serve(listener, tray_events, &mut NoTray, LogNotifier).await
     });
     finish(result, log_path)
 }
 
 #[cfg(not(windows))]
 struct NoTray;
+
+/// As notificações do KDE chegam com a bandeja (#25); até lá vão para o log.
+#[cfg(not(windows))]
+struct LogNotifier;
+
+#[cfg(not(windows))]
+impl Notifier for LogNotifier {
+    fn notify(&mut self, title: &str, body: &str) {
+        log::info!("notificação: {title} — {body}");
+    }
+}
 
 #[cfg(not(windows))]
 impl daemon::TrayOutput for NoTray {
@@ -190,6 +201,7 @@ async fn serve(
     listener: transport::IpcListener,
     tray_events: mpsc::UnboundedReceiver<daemon::TrayEvent>,
     tray: &mut impl daemon::TrayOutput,
+    mut notifier: impl Notifier,
 ) -> Result<(), String> {
     let mut settings = load_settings()?;
     let mut autostart = autostart_registrar()?;
@@ -201,7 +213,7 @@ async fn serve(
         }
     }
     let (hotkey_sender, hotkey_events) = mpsc::unbounded_channel();
-    let _hotkeys = start_hotkeys(&settings.config().hotkeys, hotkey_sender);
+    let _hotkeys = start_hotkeys(&settings.config().hotkeys, hotkey_sender, &mut notifier);
     let (requests_sender, requests) = mpsc::unbounded_channel();
     let (snapshots_sender, snapshots) = watch::channel(None);
     let (shutdown_sender, shutdown) = watch::channel(false);
@@ -213,6 +225,7 @@ async fn serve(
             cloud: TuyaCloud::new(UreqClient::default(), SystemEnv),
             panel: ChildPanel::default(),
             autostart,
+            notifier,
         },
         snapshots_sender,
         UPDATE_POLICY,
@@ -247,11 +260,13 @@ fn autostart_registrar() -> Result<impl AutostartRegistrar, String> {
 }
 
 /// Registra os atalhos globais do config; os apertados chegam por `sender`. O valor devolvido
-/// precisa ficar vivo enquanto o daemon roda. Atalho inválido ou já usado vai para o log.
+/// precisa ficar vivo enquanto o daemon roda. Atalho inválido ou já usado vai para o log e para
+/// uma notificação.
 #[cfg(windows)]
 fn start_hotkeys(
     bindings: &HotkeyBindings,
     sender: mpsc::UnboundedSender<HotkeyAction>,
+    notifier: &mut impl Notifier,
 ) -> Option<elgin_platform_windows::WindowsHotkeys> {
     let started = elgin_platform_windows::WindowsHotkeys::start(move |action| {
         let _ = sender.send(action);
@@ -259,8 +274,18 @@ fn start_hotkeys(
     let mut hotkeys = started
         .inspect_err(|error| log::warn!("atalhos globais desligados: {error}"))
         .ok()?;
-    for problem in register_hotkeys(bindings, &mut hotkeys) {
+    let problems = register_hotkeys(bindings, &mut hotkeys);
+    for problem in &problems {
         log::warn!("{problem}");
+    }
+    if !problems.is_empty() {
+        notifier.notify(
+            "Atalhos não registrados",
+            &problems.join(
+                "
+",
+            ),
+        );
     }
     Some(hotkeys)
 }
@@ -270,6 +295,7 @@ fn start_hotkeys(
 fn start_hotkeys(
     _bindings: &HotkeyBindings,
     _sender: mpsc::UnboundedSender<HotkeyAction>,
+    _notifier: &mut impl Notifier,
 ) -> Option<()> {
     None
 }

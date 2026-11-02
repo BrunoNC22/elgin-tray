@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use elgin_application::hotkeys::HotkeyAction;
 use elgin_application::ports::{
-    AutostartRegistrar, BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository,
+    AutostartRegistrar, BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository, Notifier,
 };
 use elgin_application::tray::{TrayAction, TrayViewModel};
 use elgin_ipc::messages::PanelMessage;
@@ -36,8 +36,8 @@ pub(crate) trait TrayOutput {
 /// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis,
 /// as ações da bandeja e os atalhos globais, e mostra na bandeja cada mudança, até "Sair" ou `exit`
 /// terminar.
-pub(crate) async fn run<R, K, D, C, P, A, T>(
-    mut core: DaemonCore<R, K, D, C, P, A>,
+pub(crate) async fn run<R, K, D, C, P, A, N, T>(
+    mut core: DaemonCore<R, K, D, C, P, A, N>,
     mut requests: mpsc::UnboundedReceiver<PanelMessage>,
     mut tray_events: mpsc::UnboundedReceiver<TrayEvent>,
     mut hotkeys: mpsc::UnboundedReceiver<HotkeyAction>,
@@ -51,6 +51,7 @@ pub(crate) async fn run<R, K, D, C, P, A, T>(
     C: CloudAccount + Clone,
     P: panel::PanelProcess,
     A: AutostartRegistrar,
+    N: Notifier,
 {
     tokio::pin!(exit);
     let mut shown: Option<TrayViewModel> = None;
