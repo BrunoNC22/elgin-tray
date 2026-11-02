@@ -213,12 +213,14 @@ dependencies = [
 name = "elgin-tuya-lan"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "elgin-application",
  "elgin-domain",
  "hmac",
  "serde_json",
  "sha2",
+ "socket2",
  "tokio",
 ]
 

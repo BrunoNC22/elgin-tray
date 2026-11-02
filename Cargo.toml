@@ -27,10 +27,12 @@ elgin-updater = { path = "crates/updater" }
 elgin-panel = { path = "crates/panel" }
 
 # Externas
+aes = "0.8"
 aes-gcm = "0.10"
 hmac = "0.12"
 serde_json = "1"
 sha2 = "0.10"
+socket2 = "0.6"
 tokio = { version = "1", default-features = false }
 
 [workspace.lints.rust]

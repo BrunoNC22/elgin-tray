@@ -1,0 +1,20 @@
+{
+  "note": "resposta real de uma lâmpada Elgin (Tuya 3.5) ao pedido de descoberta, anonimizada",
+  "port": 7000,
+  "cmd": 19,
+  "datagram": "0000669900000000000000000013000000f6777777777777777777777777ef98c6de13d3dfa33656b2e59770d16f480d0e4fcbdca8b85c0ba8cab334c1ca95341e00b5d847c7e586ee575c6f1c371f3d3f76df994b3d692fc8281e611bf5cf10dcfb755c04f86d77c838611b70e7592eb166b43bdaf37c2f5c6b19c096e896425a13cd8d40cdbddaa52136aa27c88fbd3e34fbb893b005422be9e5a4e84eacd977e35bd950d33e507a18b5482d259e4820c4e2187f2b9bc5bc1414b98645fece3cf22edd22e01a4707c2d2113dc4663125abde11370d7855cdcc72e42f80acecc5c8e0d8f3ff5a7efe074c1b8801e72344683bbbb4b84aa970e2df9f235101b11b570a242d4e79f700009966",
+  "json": {
+    "ip": "192.168.0.50",
+    "gwId": "bfbfbfbfbfbfbfbfbfbfbf",
+    "uuid": "u0u0u0u0u0u0u0u0",
+    "active": 2,
+    "ablilty": 0,
+    "encrypt": true,
+    "productKey": "keytfesxxsqewnqy",
+    "version": "3.5",
+    "token": true,
+    "wf_cfg": true,
+    "sl": 0,
+    "clientLink": 3
+  }
+}

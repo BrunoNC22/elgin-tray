@@ -10,10 +10,12 @@ publish.workspace = true
 [dependencies]
 elgin-domain = { workspace = true }
 elgin-application = { workspace = true }
+aes = { workspace = true }
 aes-gcm = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 serde_json = { workspace = true }
+socket2 = { workspace = true }
 tokio = { workspace = true, features = ["net", "time", "sync", "rt", "io-util"] }
 
 [dev-dependencies]

@@ -56,3 +56,21 @@ IV (12) | ciphertext | tag GCM (16) | sufixo 00009966
 - Descoberta: lâmpadas anunciam por UDP nas portas 6666 (3.1, texto), 6667 (3.3+, cifrado com a chave
   UDP = md5(`yGAdlopoPVldABfn`)); para lâmpadas 3.5 é preciso mandar um pedido (cmd `0x25`,
   `{"from":"app","ip":<meu ip>}`) em broadcast para a porta 7000.
+
+## Captura de um anúncio real (`capture_broadcast.py`)
+
+Manda o pedido de descoberta na rede local, captura a primeira resposta de uma lâmpada e grava em
+`crates/tuya-lan/tests/fixtures/real_broadcast.json` uma versão **anonimizada** (gwId, ip e uuid
+trocados por valores falsos; o resto — comando, retcode, campos do JSON — fica igual ao real):
+
+```sh
+.venv-vectors/Scripts/python -I tools/tuya-vectors/capture_broadcast.py crates/tuya-lan/tests/fixtures/real_broadcast.json
+```
+
+O que a captura da lâmpada Elgin mostrou (e que os vetores sintéticos não mostravam):
+
+- a lâmpada **não se anuncia sozinha** na porta 6667; ela só **responde ao pedido de descoberta**, e
+  responde na **porta 7000**;
+- a resposta usa o comando **19** (`UDP_NEW`) no formato 6699, com retcode antes do JSON;
+- o JSON traz `ip`, `gwId`, `uuid`, `active`, `ablilty` (sic), `encrypt`, `productKey`, `version`,
+  `token`, `wf_cfg`, `sl` e `clientLink`.

@@ -7,6 +7,7 @@
 
 mod connection;
 mod connector;
+mod discovery;
 mod dps;
 mod frame;
 mod message;
@@ -16,6 +17,7 @@ mod transport;
 
 pub use connection::{Timing, TuyaEvents, TuyaGateway};
 pub use connector::TuyaLanConnector;
+pub use discovery::TuyaDiscovery;
 
 #[cfg(test)]
 mod fake_lamp;

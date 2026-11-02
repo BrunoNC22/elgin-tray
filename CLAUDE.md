@@ -133,7 +133,10 @@ crates/
 - **A lâmpada do usuário usa o protocolo 3.5** (confirmado com `tinytuya scan`).
   O 3.5 é diferente do 3.3: quadros com prefixo `0x00006699`, criptografia AES‑GCM e negociação de uma
   chave de sessão a cada conexão (handshake com nonces local/remoto, derivado da local key).
-- Descoberta: broadcasts UDP nas portas 6666 (sem criptografia), 6667 (criptografados) e 7000 (3.5).
+- Descoberta: a lâmpada 3.5 **não se anuncia sozinha**: é preciso mandar o pedido de descoberta (cmd `0x25`,
+  cifrado com a chave UDP) em broadcast para a porta 7000, e ela responde na porta 7000 (cmd 19, formato 6699,
+  com retcode). Lâmpadas mais antigas anunciam nas portas 6666 (texto) e 6667 (cifrado). Confirmado com uma
+  captura real (`tools/tuya-vectors/capture_broadcast.py`).
 - Dados necessários por lâmpada: `device_id`, `ip`, `local_key`, `version`.
 - A lâmpada pode aceitar **poucas conexões locais simultâneas**: com o daemon rodando, ferramentas como o
   tinytuya podem falhar ao conectar (e vice‑versa).
