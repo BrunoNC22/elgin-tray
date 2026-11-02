@@ -1,0 +1,15 @@
+[package]
+name = "elgin-tray"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Controle de lâmpadas Elgin Smart (Tuya) pela bandeja do Windows e do KDE Plasma, via rede local"
+repository = "https://github.com/BrunoNC22/elgin-tray"
+publish = false
+
+[dependencies]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

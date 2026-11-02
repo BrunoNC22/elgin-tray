@@ -40,7 +40,7 @@ pela bandeja do sistema (área de ícones ocultos) no **Windows 10/11** e no **A
 
 ## Diretrizes técnicas
 
-- Linguagem: Rust (edição 2021+). Um único código para os dois sistemas; código específico de cada
+- Linguagem: Rust (edição 2024). Um único código para os dois sistemas; código específico de cada
   sistema fica isolado com `#[cfg(target_os = ...)]`.
 - Bandeja: no KDE usar StatusNotifierItem/DBus (ex.: crate `ksni`), não o XEmbed antigo. No Windows,
   usar o ícone de notificação do Win32 (ex.: crates `tray-icon` ou `windows`). Avaliar com cuidado antes
@@ -58,6 +58,6 @@ pela bandeja do sistema (área de ícones ocultos) no **Windows 10/11** e no **A
 ## Ambiente
 
 - Desenvolvimento no Windows 10 (Git Bash/PowerShell) e no Arch Linux (KDE Plasma).
-- A toolchain Rust local está na 1.78 (antiga). Rodar `rustup update stable` antes de adicionar
-  dependências que exijam um compilador mais novo.
+- Toolchain: Rust 1.99 (MSRV declarado em `rust-version` no `Cargo.toml`).
+- O perfil de release usa LTO, `codegen-units = 1` e `strip` para gerar um binário pequeno.
 - Comandos: `cargo build`, `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt`.
