@@ -9,7 +9,7 @@ Todo o código é escrito pelo Claude, e as conversas podem ser limpas ou compac
 **O estado do trabalho vive nas issues do GitHub**, não na conversa:
 
 1. Veja o progresso: milestone **v1.0** (`gh api repos/BrunoNC22/elgin-tray/milestones --jq '.[] | {title, open_issues, closed_issues}'`)
-   e a issue fixada **Roadmap v1.0**, que lista as issues na ordem recomendada de execução.
+   e a issue fixada **Roadmap v1.0** (#45, `gh issue view 45`), que lista as issues na ordem recomendada de execução.
 2. Veja se já existe trabalho pela metade: `gh issue list --label "status:em-andamento"`. Se existir,
    continue por ela e leia os comentários (handoff do agente anterior).
 3. Senão, pegue a próxima issue aberta do Roadmap cujas dependências (seção "Depende de") estejam fechadas.

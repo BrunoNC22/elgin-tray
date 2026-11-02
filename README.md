@@ -1,44 +1,37 @@
 # elgin-tray
 
 Controle a sua lâmpada **Elgin Smart Color** (Tuya, Wi‑Fi) pela bandeja do sistema, no **Windows** e no
-**Linux (KDE Plasma)**, sem o app de celular e sem passar pela nuvem.
+**Linux (KDE Plasma)**, sem o app de celular e sem passar pela nuvem no dia a dia.
 
-> 🚧 **Em desenvolvimento.** Ainda não há código funcional.
+> 🚧 **Em desenvolvimento.** Ainda não há código funcional. Acompanhe o progresso no
+> [Roadmap](https://github.com/BrunoNC22/elgin-tray/issues/45) e no
+> [milestone v1.0](https://github.com/BrunoNC22/elgin-tray/milestone/1).
 
-## Recursos planejados
+## Recursos planejados (v1.0)
 
-- Ícone na bandeja (área de ícones ocultos) que mostra o estado da lâmpada: ligada, desligada ou offline.
-- Liga/desliga, brilho, temperatura de branco e cor direto pela bandeja.
-- Lê o estado atual da lâmpada ao iniciar.
+- Ícone na bandeja (área de ícones ocultos) que mostra o estado da lâmpada: ligada (na cor atual), desligada
+  ou offline.
+- Clique no ícone abre um painel com switch liga/desliga, disco de cores (como no Smart Life), modo branco
+  com temperatura quente ↔ frio, slider de brilho e cores favoritas.
+- Menu no clique direito, rolagem do mouse sobre o ícone para ajustar o brilho (KDE) e atalhos globais de
+  teclado.
+- Lê o estado atual da lâmpada ao iniciar e acompanha mudanças feitas por outros apps.
 - Inicia junto com o sistema.
-- Controle 100% local (protocolo Tuya na LAN), rápido e funcionando mesmo sem internet.
+- Configuração inicial dentro do app, lendo um QR code com o app Smart Life.
+- Controle 100% local (protocolo Tuya 3.5 na LAN): rápido e funcionando mesmo sem internet.
+- Atualização automática no Windows; no Arch Linux, pacote AUR `elgin-tray-bin`.
 - Binário nativo em Rust, leve e com baixo consumo de memória.
 
 ## Requisitos
 
 - Lâmpada Elgin Smart (ou outra lâmpada Tuya/Smart Life) conectada ao Wi‑Fi 2,4 GHz, na mesma rede do PC.
-- O **Device ID**, o **IP** e a **local key** da lâmpada (veja abaixo).
-- Windows 10/11 ou Linux com uma bandeja compatível com StatusNotifierItem (ex.: KDE Plasma).
-
-## Obtendo a local key
-
-A local key é a chave que o app usa para conversar com a lâmpada pela rede local. Só é preciso obtê‑la uma vez:
-
-1. Pareie a lâmpada com o app **Smart Life** ou **Tuya Smart**. O app Elgin Smart pode não funcionar
-   para este passo.
-2. Obtenha a chave com o [tinytuya](https://github.com/jasonacox/tinytuya) (`python -m tinytuya wizard`,
-   precisa de uma conta gratuita em [platform.tuya.com](https://platform.tuya.com)) ou com o
-   [tuya-local-key](https://github.com/vineetchoudhary/tuya-local-key) (login por QR code, sem conta de
-   desenvolvedor).
-
-> ⚠️ Se a lâmpada for pareada de novo, a local key muda. Nunca compartilhe a sua local key.
+- A lâmpada precisa estar no app **Smart Life** (o app Elgin Smart não serve para a configuração inicial).
+  Para mover a lâmpada para o Smart Life, **remova-a primeiro no app Elgin Smart** e depois pareie no
+  Smart Life; sem isso, o Smart Life falha com "não foi possível conectar ao Wi‑Fi".
+- Windows 10/11 ou Linux com KDE Plasma 6 (Wayland ou X11).
 
 ## Compilando
 
 ```sh
 cargo build --release
 ```
-
-## Licença
-
-A definir.
