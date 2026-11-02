@@ -1,0 +1,25 @@
+import { ColourDisc } from "colour_disc.slint";
+
+export { ColourDisc }
+
+// Janela de pré-visualização do disco (substituída pelo painel completo na #29).
+export component DiscPreview inherits Window {
+    title: "Disco de cores";
+    width: 260px;
+    height: 260px;
+    background: #202020;
+    in property <image> disc;
+    in-out property <float> marker-x;
+    in-out property <float> marker-y;
+    callback picked(float, float);
+    ColourDisc {
+        x: 20px;
+        y: 20px;
+        width: 220px;
+        height: 220px;
+        disc: root.disc;
+        marker-x: root.marker-x;
+        marker-y: root.marker-y;
+        picked(x, y) => { root.picked(x, y); }
+    }
+}

@@ -1,0 +1,51 @@
+// Disco de cores: a imagem vem do Rust (disc_image.rs); aqui só o marcador e o toque.
+// Coordenadas do marcador e do toque normalizadas: centro (0, 0), borda raio 1, y para baixo.
+
+export component ColourDisc inherits Rectangle {
+    in property <image> disc;
+    in property <float> marker-x;
+    in property <float> marker-y;
+    in property <bool> enabled: true;
+    callback picked(float, float);
+
+    Image {
+        source: root.disc;
+        width: root.width;
+        height: root.height;
+        opacity: root.enabled ? 1.0 : 0.4;
+    }
+
+    // Anel duplo (branco por fora, escuro por dentro) para aparecer sobre qualquer cor.
+    Rectangle {
+        width: 20px;
+        height: 20px;
+        x: root.width / 2 + root.marker-x * root.width / 2 - self.width / 2;
+        y: root.height / 2 + root.marker-y * root.height / 2 - self.height / 2;
+        border-radius: self.width / 2;
+        border-width: 3px;
+        border-color: white;
+        visible: root.enabled;
+        Rectangle {
+            width: parent.width - 6px;
+            height: parent.height - 6px;
+            border-radius: self.width / 2;
+            border-width: 1px;
+            border-color: #00000080;
+        }
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: crosshair;
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.picked(self.mouse-x / root.width * 2 - 1, self.mouse-y / root.height * 2 - 1);
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                root.picked(self.mouse-x / root.width * 2 - 1, self.mouse-y / root.height * 2 - 1);
+            }
+        }
+    }
+}
