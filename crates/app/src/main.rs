@@ -265,9 +265,14 @@ fn start_hotkeys(
     Some(hotkeys)
 }
 
-/// Os atalhos do KDE chegam na #35.
+/// Os atalhos do KDE chegam na #35; até lá não há nada para manter vivo.
 #[cfg(not(windows))]
-fn start_hotkeys(_bindings: &HotkeyBindings, _sender: mpsc::UnboundedSender<HotkeyAction>) {}
+fn start_hotkeys(
+    _bindings: &HotkeyBindings,
+    _sender: mpsc::UnboundedSender<HotkeyAction>,
+) -> Option<()> {
+    None
+}
 
 fn finish(result: Result<(), String>, log_path: Option<PathBuf>) -> ExitCode {
     match result {
