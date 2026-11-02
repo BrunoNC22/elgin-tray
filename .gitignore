@@ -34,3 +34,4 @@ CLAUDE.local.md
 # Venv do gerador de vetores (tools/tuya-vectors)
 .venv-vectors/
 __pycache__/
+.venv-cloud-vectors/

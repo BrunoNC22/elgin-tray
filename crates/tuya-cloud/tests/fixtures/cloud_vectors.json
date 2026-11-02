@@ -1,0 +1,17 @@
+{
+  "generator": "tools/tuya-cloud-vectors/generate.py",
+  "client_id": "HA_3y9q4ak7g4ephrvke",
+  "request_id": "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0",
+  "refresh_token": "renovacao0000000000000000000000x",
+  "access_token": "acesso00000000000000000000000000",
+  "time_ms": "1700000000000",
+  "nonce": "ABCDEFGHJKMN",
+  "hash_key": "f9e3319c60137dd16dea33bf3839bb50",
+  "secret": "a8ed2c167537a0f7",
+  "params_json": "{\"homeId\":\"123456\"}",
+  "query_encdata": "QUJDREVGR0hKS01OinEspMqkolGa2yVp9T17han/qvQZeLZiSkatqDL7uLYdKFI=",
+  "sign_with_query": "6f3a06f23b851784fe2e445db468306ee0411127eaaa6649fded58a26782ac7c",
+  "sign_without_query": "d55180fca873a0540b8f946abe7f01cc9b111003bca130be862df06556016066",
+  "response_result": "QUJDREVGR0hKS01OqihmosPj0RWag2Fo9z5/gK/t55RlKcwAGHK56RDIxfCEvRJ1n3uY5p9ccjvte7txTu4cF9LybSK1+n039QUc9vnCcBOBSuc4CSG+UTzwZjlXgIEXKK3jlXItJ0se8xaxp9PII3UcAuVAJV3zWnaux6WnDz3jp6hAqVrxBWH1EoAMPWfNIsZzqgm/hbznp4YU+eKzme2OtjiHRyvc",
+  "response_json": "[{\"id\": \"bf00000000000000000000\", \"name\": \"Lâmpada\", \"local_key\": \"0123456789abcdef\", \"category\": \"dj\", \"product_name\": \"10W Smart color\"}]"
+}

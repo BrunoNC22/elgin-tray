@@ -23,8 +23,6 @@ impl SessionData {
         CloudSession::new(serde_json::to_string(self).expect("SessionData sempre vira JSON"))
     }
 
-    // Usado pela listagem de dispositivos (#17).
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn from_cloud_session(session: &CloudSession) -> Result<Self, CloudError> {
         // Uma sessão que não dá para ler é tratada como expirada: o caminho é fazer login de novo.
         serde_json::from_str(session.expose()).map_err(|_| CloudError::SessionExpired)

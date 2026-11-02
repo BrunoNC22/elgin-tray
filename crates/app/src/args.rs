@@ -16,6 +16,7 @@ Comandos do ctl:
   discover                           procura a lâmpada na rede e mostra o IP
   watch                              mostra as mudanças da lâmpada até ser interrompido (Ctrl+C)
   login <código de usuário>          login por QR code no Smart Life (guarda a sessão da nuvem)
+  devices                            lista os dispositivos da conta na nuvem (precisa do login)
 
 A configuração é lida de %APPDATA%\\elgin-tray\\config.toml (Windows) ou
 ~/.config/elgin-tray/config.toml (Linux); para usar outro arquivo, defina ELGIN_TRAY_CONFIG.";
@@ -37,6 +38,8 @@ pub(crate) enum CtlCommand {
     Watch,
     /// Login por QR code com o código de usuário do Smart Life.
     Login(String),
+    /// Lista os dispositivos da conta na nuvem.
+    Devices,
     /// Um comando para a lâmpada.
     Apply(BulbCommand),
 }
@@ -61,6 +64,7 @@ fn parse_ctl(words: &[&str]) -> Result<CtlCommand, String> {
         ["discover"] => Ok(CtlCommand::Discover),
         ["watch"] => Ok(CtlCommand::Watch),
         ["login", user_code] => Ok(CtlCommand::Login((*user_code).to_owned())),
+        ["devices"] => Ok(CtlCommand::Devices),
         ["on"] => apply(BulbCommand::SetPower(Power::On)),
         ["off"] => apply(BulbCommand::SetPower(Power::Off)),
         ["toggle"] => apply(BulbCommand::TogglePower),

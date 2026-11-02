@@ -8,7 +8,7 @@ mod gateway;
 mod observer;
 
 pub use clock::Clock;
-pub use cloud::{CloudAccount, CloudError, LoginPoll, QrLogin};
+pub use cloud::{CloudAccount, CloudDevice, CloudDevices, CloudError, LoginPoll, QrLogin};
 pub use config::{ConfigError, ConfigRepository};
 pub use connection::{BulbConnector, BulbDiscovery, BulbEvent, BulbEvents};
 pub use gateway::{BulbGateway, GatewayError};

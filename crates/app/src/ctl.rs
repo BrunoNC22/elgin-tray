@@ -91,9 +91,11 @@ where
     C: CloudAccount,
     O: Output,
 {
-    // O login não precisa de lâmpada configurada.
-    if let CtlCommand::Login(user_code) = &command {
-        return login(user_code, settings, cloud, out).await;
+    // Os comandos da nuvem não precisam de lâmpada configurada.
+    match &command {
+        CtlCommand::Login(user_code) => return login(user_code, settings, cloud, out).await,
+        CtlCommand::Devices => return list_cloud_devices(settings, cloud, out).await,
+        _ => {}
     }
     let bulb = settings.config().primary_bulb().cloned().ok_or_else(|| {
         "nenhuma lâmpada configurada: preencha o config.toml (veja o README)".to_owned()
@@ -107,7 +109,7 @@ where
     };
 
     match command {
-        CtlCommand::Login(_) => unreachable!("tratado acima"),
+        CtlCommand::Login(_) | CtlCommand::Devices => unreachable!("tratado acima"),
         CtlCommand::Discover => {
             let endpoint = find_and_save(&bulb, settings, discovery, out).await?;
             out.line(&format!(
@@ -189,6 +191,38 @@ where
             LoginPoll::Pending => tokio::time::sleep(LOGIN_POLL_INTERVAL).await,
         }
     }
+}
+
+/// Lista os dispositivos da conta na nuvem e guarda a sessão (que pode ter sido renovada).
+async fn list_cloud_devices<R, C, O>(
+    settings: &mut Settings<R>,
+    cloud: &mut C,
+    out: &mut O,
+) -> Result<(), String>
+where
+    R: ConfigRepository,
+    C: CloudAccount,
+    O: Output,
+{
+    let session = settings.config().cloud_session.clone().ok_or_else(|| {
+        "não há sessão da nuvem: rode `elgin-tray ctl login <código de usuário>` antes".to_owned()
+    })?;
+    let listed = cloud
+        .list_devices(&session)
+        .await
+        .map_err(|error| error.to_string())?;
+    settings
+        .set_cloud_session(Some(listed.session))
+        .map_err(|error| error.to_string())?;
+    for device in listed.devices {
+        // Só o começo da chave: o terminal pode estar sendo compartilhado ou gravado.
+        let key_start: String = device.local_key.expose().chars().take(4).collect();
+        out.line(&format!(
+            "{} ({}, {}): id {}, chave {key_start}…",
+            device.name, device.category, device.product_name, device.id
+        ));
+    }
+    Ok(())
 }
 
 /// QR code em caracteres de bloco, claro sobre escuro (lê melhor em terminais de fundo escuro).
@@ -290,7 +324,7 @@ mod tests {
     use elgin_application::config::AppConfig;
     use elgin_application::config::CloudSession;
     use elgin_application::credentials::LocalKey;
-    use elgin_application::ports::{CloudError, QrLogin};
+    use elgin_application::ports::{CloudDevice, CloudDevices, CloudError, QrLogin};
     use elgin_application::testing::{
         FakeBulbGateway, FakeConfigRepository, ScriptedEvents, StubCloudAccount, StubConnector,
         StubDiscovery,
@@ -624,5 +658,57 @@ mod tests {
 
         assert!(error.contains("não foi confirmado a tempo"), "{error}");
         assert_eq!(f.repository.saved().unwrap().cloud_session, None);
+    }
+
+    #[tokio::test]
+    async fn devices_lists_the_cloud_devices_and_saves_the_renewed_session() {
+        let mut f = fixture(Vec::new());
+        f.settings
+            .set_cloud_session(Some(CloudSession::new("velha")))
+            .unwrap();
+        f.cloud.list_returns(Ok(CloudDevices {
+            devices: vec![CloudDevice {
+                id: "bf123".to_owned(),
+                name: "Lâmpada do quarto".to_owned(),
+                local_key: LocalKey::new("abcdefghijklmnop"),
+                category: "dj".to_owned(),
+                product_name: "10W Smart color".to_owned(),
+            }],
+            session: CloudSession::new("nova"),
+        }));
+
+        f.run(CtlCommand::Devices).await.unwrap();
+
+        assert_eq!(f.cloud.listed_sessions(), [CloudSession::new("velha")]);
+        assert_eq!(
+            f.repository.saved().unwrap().cloud_session,
+            Some(CloudSession::new("nova"))
+        );
+        assert_eq!(
+            f.out.0,
+            ["Lâmpada do quarto (dj, 10W Smart color): id bf123, chave abcd…"]
+        );
+    }
+
+    #[tokio::test]
+    async fn devices_without_a_session_asks_for_the_login() {
+        let mut f = fixture(Vec::new());
+
+        let error = f.run(CtlCommand::Devices).await.unwrap_err();
+
+        assert!(error.contains("ctl login"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn devices_with_an_expired_session_asks_for_the_login_again() {
+        let mut f = fixture(Vec::new());
+        f.settings
+            .set_cloud_session(Some(CloudSession::new("velha")))
+            .unwrap();
+        f.cloud.list_returns(Err(CloudError::SessionExpired));
+
+        let error = f.run(CtlCommand::Devices).await.unwrap_err();
+
+        assert!(error.contains("expirou"), "{error}");
     }
 }

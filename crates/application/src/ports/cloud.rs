@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::config::CloudSession;
+use crate::credentials::LocalKey;
 
 /// Conta na nuvem do fabricante (Smart Life), usada só para configurar a lâmpada e recuperar a
 /// local key. O controle do dia a dia é todo pela rede local.
@@ -11,6 +12,28 @@ pub trait CloudAccount {
 
     /// Consulta se o QR já foi lido e confirmado no celular.
     async fn poll_login(&mut self, login: &QrLogin) -> Result<LoginPoll, CloudError>;
+
+    /// Lista os dispositivos da conta, com a local key de cada um. Renova a sessão se precisar: a
+    /// sessão devolvida (talvez nova) deve ser salva no lugar da antiga.
+    async fn list_devices(&mut self, session: &CloudSession) -> Result<CloudDevices, CloudError>;
+}
+
+/// Um dispositivo da conta na nuvem.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudDevice {
+    pub id: String,
+    pub name: String,
+    pub local_key: LocalKey,
+    /// Categoria da Tuya (lâmpadas são `dj`).
+    pub category: String,
+    pub product_name: String,
+}
+
+/// Resultado da listagem: os dispositivos e a sessão (renovada, se foi preciso).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudDevices {
+    pub devices: Vec<CloudDevice>,
+    pub session: CloudSession,
 }
 
 /// Um login por QR em andamento.

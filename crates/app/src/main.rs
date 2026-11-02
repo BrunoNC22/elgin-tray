@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 use elgin_application::config::Settings;
 use elgin_config::{FsStore, TomlConfigRepository};
-use elgin_tuya_cloud::{TuyaCloud, UreqClient};
+use elgin_tuya_cloud::{SystemEnv, TuyaCloud, UreqClient};
 use elgin_tuya_lan::{TuyaDiscovery, TuyaLanConnector};
 
 use crate::args::{CtlCommand, Mode, USAGE};
@@ -71,7 +71,7 @@ fn run_ctl(command: CtlCommand) -> ExitCode {
             &mut settings,
             &mut TuyaLanConnector::default(),
             &mut TuyaDiscovery::default(),
-            &mut TuyaCloud::new(UreqClient::default()),
+            &mut TuyaCloud::new(UreqClient::default(), SystemEnv),
             &mut ctl::Stdout,
         )
         .await
