@@ -21,8 +21,10 @@ elgin-ipc = { workspace = true }
 elgin-icons = { workspace = true }
 elgin-updater = { workspace = true }
 elgin-panel = { workspace = true }
+log = { workspace = true }
 qrcode = { workspace = true }
-tokio = { workspace = true, features = ["rt", "time", "net"] }
+directories = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time", "net", "sync", "signal", "macros"] }
 
 [target.'cfg(windows)'.dependencies]
 elgin-tray-windows = { workspace = true }

@@ -33,6 +33,7 @@ base64 = "0.22"
 directories = "6"
 hmac = "0.12"
 interprocess = { version = "2", features = ["tokio"] }
+log = { version = "0.4", features = ["std"] }
 md-5 = "0.10"
 serde = { version = "1", features = ["derive"] }
 qrcode = { version = "0.14", default-features = false }
