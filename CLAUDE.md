@@ -16,8 +16,12 @@ pela bandeja do sistema (área de ícones ocultos) no **Windows 10/11** e no **A
 - Lâmpadas Elgin Smart são dispositivos Tuya genéricos (o app Elgin Smart é uma versão com a marca da Elgin
   em cima do SDK Tuya). Não é necessária engenharia reversa: usar o protocolo local Tuya.
 - Protocolo local Tuya: TCP porta 6668, mensagens criptografadas com AES usando a **local key** (16 caracteres).
-  Versão esperada: 3.3 (confirmar com `tinytuya scan`; suportar 3.4/3.5 se possível).
-- Descoberta: broadcasts UDP nas portas 6666 (sem criptografia) e 6667 (criptografados).
+- **A lâmpada do usuário usa o protocolo 3.5** (confirmado com `tinytuya scan`, Product ID `keytfesxxsqewnqy`).
+  O 3.5 é diferente do 3.3: quadros com prefixo `0x00006699`, criptografia AES‑GCM e negociação de uma
+  chave de sessão a cada conexão (handshake com nonces local/remoto, derivado da local key). As crates Rust
+  existentes costumam suportar só 3.1/3.3, então o protocolo 3.5 provavelmente será implementado aqui,
+  usando o tinytuya como referência e para validar o comportamento.
+- Descoberta: broadcasts UDP nas portas 6666 (sem criptografia), 6667 (criptografados) e 7000 (3.5).
 - Dados necessários por lâmpada: `device_id`, `ip`, `local_key`, `version`.
 - DPs (data points) típicos de lâmpadas Tuya v2. Confirmar no dispositivo real antes de assumir:
   - `20` liga/desliga (bool)
