@@ -25,7 +25,12 @@ fn main() {
         .flat_map(|p| {
             let a = u16::from(p[3]);
             let premultiply = |c: u8| ((u16::from(c) * a + 127) / 255) as u8;
-            [premultiply(p[0]), premultiply(p[1]), premultiply(p[2]), p[3]]
+            [
+                premultiply(p[0]),
+                premultiply(p[1]),
+                premultiply(p[2]),
+                p[3],
+            ]
         })
         .collect();
     let pixmap = Pixmap::from_vec(data, IntSize::from_wh(SIZE, SIZE).unwrap()).unwrap();
