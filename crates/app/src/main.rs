@@ -21,7 +21,9 @@ use elgin_application::config::{HotkeyBindings, Settings, apply_autostart};
 use elgin_application::hotkeys::HotkeyAction;
 #[cfg(windows)]
 use elgin_application::hotkeys::register_hotkeys;
-use elgin_application::ports::{AutostartRegistrar, Notifier};
+use elgin_application::ports::{
+    AutostartRegistrar, Notifier, Release, UpdateError, UpdateInstaller, UpdateSource,
+};
 use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
 use elgin_ipc::session::DaemonChannels;
@@ -31,7 +33,7 @@ use elgin_tuya_lan::{TuyaDiscovery, TuyaLanConnector};
 use tokio::sync::{mpsc, watch};
 
 use crate::args::{CtlCommand, Mode, USAGE};
-use crate::daemon::{Adapters, ChildPanel, DaemonCore};
+use crate::daemon::{Adapters, ChildPanel, DaemonCore, DaemonExit};
 
 /// Como as atualizações chegam: no Windows o app instala sozinho; no Linux (pacote AUR) só avisa.
 const UPDATE_POLICY: UpdatePolicy = if cfg!(windows) {
@@ -90,7 +92,7 @@ fn run_daemon() -> ExitCode {
         block_on_local(async move {
             let Some(listener) = claim_instance().await? else {
                 let _ = started_sender.send(false);
-                return Ok(());
+                return Ok(DaemonExit::Quit);
             };
             let _ = started_sender.send(true);
             let (waker, notifier): (elgin_tray_windows::TrayWaker, _) = waker_receiver
@@ -154,7 +156,7 @@ fn run_daemon() -> ExitCode {
     log::info!("elgin-tray {} iniciando", env!("CARGO_PKG_VERSION"));
     let result = block_on_local(async {
         let Some(listener) = claim_instance().await? else {
-            return Ok(());
+            return Ok(DaemonExit::Quit);
         };
         // Sem bandeja ainda: o remetente fica vivo para o canal não fechar.
         let (_tray_sender, tray_events) = mpsc::unbounded_channel();
@@ -202,7 +204,7 @@ async fn serve(
     tray_events: mpsc::UnboundedReceiver<daemon::TrayEvent>,
     tray: &mut impl daemon::TrayOutput,
     mut notifier: impl Notifier,
-) -> Result<(), String> {
+) -> Result<DaemonExit, String> {
     let mut settings = load_settings()?;
     let mut autostart = autostart_registrar()?;
     // Em desenvolvimento, não registra o executável de `target/` para iniciar com o sistema.
@@ -226,6 +228,8 @@ async fn serve(
             panel: ChildPanel::default(),
             autostart,
             notifier,
+            update_source: UpdatesNotReady,
+            installer: UpdatesNotReady,
         },
         snapshots_sender,
         UPDATE_POLICY,
@@ -238,13 +242,41 @@ async fn serve(
             shutdown,
         },
     ));
-    daemon::run(core, requests, tray_events, hotkey_events, tray, async {
+    let exit = daemon::run(core, requests, tray_events, hotkey_events, tray, async {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await;
     let _ = shutdown_sender.send(true);
     log::info!("elgin-tray encerrado");
-    Ok(())
+    Ok(exit)
+}
+
+/// A fonte de versões (releases do GitHub) e o instalador chegam na #39 (Windows) e na #41
+/// (Linux); até lá a verificação responde que não está disponível.
+struct UpdatesNotReady;
+
+const UPDATES_NOT_READY: &str = "a verificação de atualizações ainda não está disponível";
+
+impl UpdateSource for UpdatesNotReady {
+    async fn latest_release(&mut self) -> Result<Release, UpdateError> {
+        Err(UpdateError::Rejected(UPDATES_NOT_READY.to_owned()))
+    }
+}
+
+impl UpdateInstaller for UpdatesNotReady {
+    async fn install(&mut self, _release: &Release) -> Result<(), UpdateError> {
+        Err(UpdateError::Rejected(UPDATES_NOT_READY.to_owned()))
+    }
+}
+
+/// Depois de instalar uma atualização: abre o executável novo. Chamado quando o daemon já
+/// terminou e liberou o canal local (senão a versão nova acharia que já há uma rodando).
+fn restart_after_update() {
+    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).spawn());
+    match started {
+        Ok(_) => log::info!("versão nova iniciada"),
+        Err(error) => log::error!("não foi possível reiniciar depois da atualização: {error}"),
+    }
 }
 
 #[cfg(windows)]
@@ -300,9 +332,14 @@ fn start_hotkeys(
     None
 }
 
-fn finish(result: Result<(), String>, log_path: Option<PathBuf>) -> ExitCode {
+fn finish(result: Result<DaemonExit, String>, log_path: Option<PathBuf>) -> ExitCode {
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(exit) => {
+            if exit == DaemonExit::Restart {
+                restart_after_update();
+            }
+            ExitCode::SUCCESS
+        }
         Err(message) => {
             log::error!("{message}");
             if let Some(path) = log_path {
@@ -337,7 +374,7 @@ fn run_ctl(command: CtlCommand) -> ExitCode {
 
 /// Roda `future` num runtime de uma thread dentro de um `LocalSet` (as conexões Tuya e os painéis
 /// rodam em tarefas locais).
-fn block_on_local(future: impl Future<Output = Result<(), String>>) -> Result<(), String> {
+fn block_on_local<T>(future: impl Future<Output = Result<T, String>>) -> Result<T, String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

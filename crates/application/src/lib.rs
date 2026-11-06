@@ -17,6 +17,7 @@ pub mod setup;
 pub mod status;
 pub mod supervisor;
 pub mod tray;
+pub mod updates;
 
 /// Dublês de teste das portas (stubs, spies, fakes), escritos à mão.
 #[cfg(any(test, feature = "testing"))]

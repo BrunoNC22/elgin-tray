@@ -9,6 +9,7 @@ mod gateway;
 mod hotkeys;
 mod notifier;
 mod observer;
+mod updates;
 
 pub use autostart::AutostartRegistrar;
 pub use clock::Clock;
@@ -19,3 +20,4 @@ pub use gateway::{BulbGateway, GatewayError};
 pub use hotkeys::HotkeyRegistrar;
 pub use notifier::Notifier;
 pub use observer::{BulbObserver, ControllerEvent};
+pub use updates::{Release, ReleaseAsset, UpdateError, UpdateInstaller, UpdateSource};

@@ -8,7 +8,7 @@ use elgin_application::controller::{BulbController, DEFAULT_MIN_SEND_INTERVAL};
 use elgin_application::hotkeys::{HotkeyAction, hotkey_command};
 use elgin_application::ports::{
     AutostartRegistrar, BulbConnector, BulbDiscovery, BulbEvent, BulbObserver, Clock, CloudAccount,
-    ConfigRepository, ControllerEvent, Notifier,
+    ConfigRepository, ControllerEvent, Notifier, UpdateInstaller, UpdateSource,
 };
 use elgin_application::setup::{BulbSetup, RecoveryError, SetupState, recover_local_key};
 use elgin_application::status::ConnectionStatus;
@@ -18,6 +18,7 @@ use elgin_application::supervisor::{
 use elgin_application::tray::{
     MenuAction, TrayAction, TrayInputs, TrayViewModel, UpdatePolicy, command_for, present,
 };
+use elgin_application::updates::{UpdateChecker, UpdateOutcome, Version};
 use elgin_domain::{FavoriteColour, FavoriteSlot};
 use elgin_ipc::messages::{PanelMessage, SetupRequestDto, SnapshotDto};
 use tokio::sync::watch;
@@ -49,19 +50,28 @@ pub(crate) enum TrayOutcome {
     Quit,
 }
 
+/// A versão em execução (a do workspace, que bate com a tag da release).
+fn current_version() -> Version {
+    env!("CARGO_PKG_VERSION")
+        .parse()
+        .expect("a versão do Cargo.toml é X.Y.Z")
+}
+
 /// Os adaptadores de que o núcleo precisa (as portas da aplicação e o processo do painel).
-pub(crate) struct Adapters<K, D, C, P, A, N> {
+pub(crate) struct Adapters<K, D, C, P, A, N, S, I> {
     pub(crate) connector: K,
     pub(crate) discovery: D,
     pub(crate) cloud: C,
     pub(crate) panel: P,
     pub(crate) autostart: A,
     pub(crate) notifier: N,
+    pub(crate) update_source: S,
+    pub(crate) installer: I,
 }
 
 type Controller<K> = BulbController<<K as BulbConnector>::Gateway, NoopObserver, TokioClock>;
 
-pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A, N> {
+pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A, N, S, I> {
     settings: Settings<R>,
     connector: K,
     discovery: D,
@@ -74,13 +84,16 @@ pub(crate) struct DaemonCore<R, K: BulbConnector, D, C, P, A, N> {
     panel: P,
     autostart: A,
     notifier: N,
+    updates: UpdateChecker<S, I, TokioClock>,
+    /// Uma atualização foi instalada: o loop sai e o `main` abre a versão nova.
+    restart_requested: bool,
     snapshots: watch::Sender<Option<SnapshotDto>>,
     update_policy: UpdatePolicy,
     /// Quando o painel avisou que fechou.
     panel_closed_at: Option<Instant>,
 }
 
-impl<R, K, D, C, P, A, N> DaemonCore<R, K, D, C, P, A, N>
+impl<R, K, D, C, P, A, N, S, I> DaemonCore<R, K, D, C, P, A, N, S, I>
 where
     R: ConfigRepository,
     K: BulbConnector + Clone,
@@ -89,10 +102,12 @@ where
     P: PanelProcess,
     A: AutostartRegistrar,
     N: Notifier,
+    S: UpdateSource,
+    I: UpdateInstaller,
 {
     pub(crate) fn new(
         settings: Settings<R>,
-        adapters: Adapters<K, D, C, P, A, N>,
+        adapters: Adapters<K, D, C, P, A, N, S, I>,
         snapshots: watch::Sender<Option<SnapshotDto>>,
         update_policy: UpdatePolicy,
     ) -> Self {
@@ -103,6 +118,8 @@ where
             panel,
             autostart,
             notifier,
+            update_source,
+            installer,
         } = adapters;
         let mut core = Self {
             settings,
@@ -117,6 +134,14 @@ where
             panel,
             autostart,
             notifier,
+            updates: UpdateChecker::new(
+                update_source,
+                installer,
+                TokioClock,
+                update_policy,
+                current_version(),
+            ),
+            restart_requested: false,
             snapshots,
             update_policy,
             panel_closed_at: None,
@@ -135,6 +160,7 @@ where
             self.controller.next_flush_at(),
             self.setup_poll_at,
             self.recovery_retry_at,
+            Some(self.updates.next_check_at()),
         ]
         .into_iter()
         .flatten()
@@ -158,7 +184,63 @@ where
             self.recovery_retry_at = None;
             self.recover_key().await;
         }
+        if self.updates.next_check_at() <= now {
+            self.check_updates(false).await;
+        }
         self.publish();
+    }
+
+    /// Verifica atualizações. `manual`: pedido pelo menu (aí o usuário sempre recebe uma resposta).
+    async fn check_updates(&mut self, manual: bool) {
+        let outcome = self.updates.check(&mut self.settings).await;
+        let current = self.updates.current();
+        match outcome {
+            UpdateOutcome::UpToDate => {
+                log::info!("atualizações: já está na última versão ({current})");
+                if manual {
+                    self.notifier.notify(
+                        "Nenhuma atualização",
+                        &format!("Você já está na versão mais recente ({current})."),
+                    );
+                }
+            }
+            UpdateOutcome::Available {
+                version,
+                first_notice,
+            } => {
+                log::info!("atualizações: versão {version} disponível");
+                if first_notice || manual {
+                    self.notify_available(version);
+                }
+            }
+            UpdateOutcome::Installed(version) => {
+                log::info!("atualizações: versão {version} instalada; reiniciando");
+                self.notifier.notify(
+                    &format!("Atualizado para a versão {version}"),
+                    "O elgin-tray vai reiniciar na versão nova.",
+                );
+                self.restart_requested = true;
+            }
+            UpdateOutcome::Failed(error) => {
+                log::warn!("atualizações: {error}");
+                if manual {
+                    self.notifier
+                        .notify("Não foi possível atualizar", &error.to_string());
+                }
+            }
+        }
+    }
+
+    fn notify_available(&mut self, version: Version) {
+        self.notifier.notify(
+            &format!("Nova versão {version} disponível"),
+            "Atualize pelo gerenciador de pacotes: yay -Syu elgin-tray-bin",
+        );
+    }
+
+    /// Uma atualização foi instalada e o daemon precisa reiniciar na versão nova.
+    pub(crate) fn restart_requested(&self) -> bool {
+        self.restart_requested
     }
 
     /// Espera o próximo aviso da lâmpada conectada (para sempre, sem conexão).
@@ -238,19 +320,18 @@ where
     /// O que a bandeja deve mostrar agora.
     pub(crate) fn tray_view(&self) -> TrayViewModel {
         let config = self.settings.config();
+        let available_update = self.updates.available().map(|version| version.to_string());
         present(&TrayInputs {
             bulb_name: config.primary_bulb().map(|bulb| bulb.name.as_str()),
             snapshot: &self.controller.snapshot(),
             favorites: &config.favorites,
             autostart: config.autostart.unwrap_or(false),
             update_policy: self.update_policy,
-            // A verificação de atualizações chega na #38.
-            available_update: None,
+            available_update: available_update.as_deref(),
             app_version: env!("CARGO_PKG_VERSION"),
         })
     }
 
-    /// Clique, rolagem ou item de menu na bandeja. `anchor` é onde o ícone está na tela.
     /// Logo depois de iniciar: sem lâmpada configurada, abre a configuração inicial no painel.
     pub(crate) async fn on_start(&mut self) {
         if self.settings.config().primary_bulb().is_none() {
@@ -269,6 +350,7 @@ where
         }
     }
 
+    /// Clique, rolagem ou item de menu na bandeja. `anchor` é onde o ícone está na tela.
     pub(crate) async fn on_tray_action(
         &mut self,
         action: TrayAction,
@@ -291,8 +373,11 @@ where
                     Err(error) => log::warn!("não foi possível trocar o autostart: {error}"),
                 }
             }
-            TrayAction::Menu(MenuAction::CheckUpdates | MenuAction::ShowUpdate) => {
-                log::info!("verificação de atualizações ainda não implementada (#38)");
+            TrayAction::Menu(MenuAction::CheckUpdates) => self.check_updates(true).await,
+            TrayAction::Menu(MenuAction::ShowUpdate) => {
+                if let Some(version) = self.updates.available() {
+                    self.notify_available(version);
+                }
             }
             TrayAction::Menu(MenuAction::Quit) => return TrayOutcome::Quit,
             TrayAction::MiddleClick
@@ -467,8 +552,8 @@ mod tests {
     use elgin_application::credentials::{Endpoint, LocalKey};
     use elgin_application::ports::{CloudDevice, CloudDevices, GatewayError, LoginPoll, QrLogin};
     use elgin_application::testing::{
-        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, SpyAutostart, SpyNotifier,
-        StubCloudAccount, StubConnector, StubDiscovery,
+        FakeBulbGateway, FakeConfigRepository, ScriptedEvents, SpyAutostart, SpyInstaller,
+        SpyNotifier, StubCloudAccount, StubConnector, StubDiscovery, StubUpdateSource,
     };
     use elgin_domain::{
         Brightness, BulbId, BulbName, BulbState, ColorTemperature, LightMode, Power,
@@ -484,6 +569,8 @@ mod tests {
         FakePanel,
         SpyAutostart,
         SpyNotifier,
+        StubUpdateSource,
+        SpyInstaller,
     >;
 
     fn white(percent: u8) -> BulbState {
@@ -520,16 +607,24 @@ mod tests {
         cloud: StubCloudAccount,
         autostart: SpyAutostart,
         notifier: SpyNotifier,
+        updates: StubUpdateSource,
+        installer: SpyInstaller,
         snapshots: watch::Receiver<Option<SnapshotDto>>,
     }
 
     fn fixture(config: AppConfig) -> Fixture {
+        fixture_with(config, UpdatePolicy::AutoInstall)
+    }
+
+    fn fixture_with(config: AppConfig, update_policy: UpdatePolicy) -> Fixture {
         let repository = FakeConfigRepository::with(config);
         let connector = StubConnector::new();
         let discovery = StubDiscovery::new();
         let cloud = StubCloudAccount::new();
         let autostart = SpyAutostart::new();
         let notifier = SpyNotifier::new();
+        let updates = StubUpdateSource::new();
+        let installer = SpyInstaller::new();
         let (sender, snapshots) = watch::channel(None);
         let core = Core::new(
             Settings::load(repository.clone()).unwrap(),
@@ -540,9 +635,11 @@ mod tests {
                 panel: FakePanel::default(),
                 autostart: autostart.clone(),
                 notifier: notifier.clone(),
+                update_source: updates.clone(),
+                installer: installer.clone(),
             },
             sender,
-            UpdatePolicy::AutoInstall,
+            update_policy,
         );
         Fixture {
             core,
@@ -552,6 +649,8 @@ mod tests {
             cloud,
             autostart,
             notifier,
+            updates,
+            installer,
             snapshots,
         }
     }
@@ -589,7 +688,11 @@ mod tests {
 
         assert_eq!(f.snapshot().connection, ConnectionDto::NotConfigured);
         assert_eq!(f.snapshot().bulb_name, None);
-        assert_eq!(f.core.next_deadline(), None);
+        assert_eq!(
+            f.core.next_deadline(),
+            Some(f.core.updates.next_check_at()),
+            "só falta a verificação de atualizações"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -692,7 +795,11 @@ mod tests {
         f.settle().await;
 
         assert_eq!(f.snapshot().connection, ConnectionDto::NeedsReconfiguration);
-        assert_eq!(f.core.next_deadline(), None);
+        assert_eq!(
+            f.core.next_deadline(),
+            Some(f.core.updates.next_check_at()),
+            "só falta a verificação de atualizações"
+        );
         let sent = f.notifier.sent();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].0, "A lâmpada precisa ser reconfigurada");
@@ -711,8 +818,8 @@ mod tests {
         f.settle().await;
 
         assert_eq!(f.snapshot().connection, ConnectionDto::KeyRejected);
-        let deadline = tokio::time::Instant::from_std(f.core.next_deadline().unwrap());
-        assert_eq!(deadline - tokio::time::Instant::now(), RECOVERY_RETRY);
+        let retry = tokio::time::Instant::from_std(f.core.recovery_retry_at.unwrap());
+        assert_eq!(retry - tokio::time::Instant::now(), RECOVERY_RETRY);
     }
 
     #[tokio::test(start_paused = true)]
@@ -748,6 +855,79 @@ mod tests {
         let first = saved.get(FavoriteSlot::try_new(0).unwrap());
         assert_eq!(first.hue().degrees(), 170);
         assert_eq!(first.saturation().permille(), 600);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_new_version_is_installed_shortly_after_starting_and_asks_for_a_restart() {
+        let mut f = configured();
+        f.updates.latest("99.0.0");
+
+        f.settle().await;
+        assert!(f.installer.installed().is_empty(), "ainda não");
+        tokio::time::sleep(elgin_application::updates::FIRST_CHECK_DELAY).await;
+        f.settle().await;
+
+        assert_eq!(f.installer.installed(), ["99.0.0".parse().unwrap()]);
+        assert!(f.core.restart_requested());
+        assert_eq!(f.notifier.sent()[0].0, "Atualizado para a versão 99.0.0");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn automatic_checks_are_silent_and_manual_ones_always_answer() {
+        let mut f = configured();
+        tokio::time::sleep(elgin_application::updates::FIRST_CHECK_DELAY).await;
+        f.settle().await;
+        assert_eq!(f.updates.calls(), 1);
+        assert!(
+            f.notifier.sent().is_empty(),
+            "falha de rede automática só vai para o log"
+        );
+
+        f.core
+            .on_tray_action(TrayAction::Menu(MenuAction::CheckUpdates), None)
+            .await;
+        assert_eq!(f.notifier.sent()[0].0, "Não foi possível atualizar");
+
+        f.updates.latest(env!("CARGO_PKG_VERSION"));
+        f.core
+            .on_tray_action(TrayAction::Menu(MenuAction::CheckUpdates), None)
+            .await;
+        assert_eq!(f.notifier.sent()[1].0, "Nenhuma atualização");
+        assert!(!f.core.restart_requested());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn notify_only_shows_the_new_version_in_the_menu_and_notifies_once() {
+        let mut f = fixture_with(
+            AppConfig {
+                bulbs: vec![bulb("chave")],
+                ..AppConfig::default()
+            },
+            UpdatePolicy::NotifyOnly,
+        );
+        f.updates.latest("99.0.0");
+
+        for _ in 0..2 {
+            tokio::time::sleep(elgin_application::updates::CHECK_INTERVAL).await;
+            f.settle().await;
+        }
+
+        assert_eq!(f.updates.calls(), 2);
+        assert!(f.installer.installed().is_empty());
+        assert_eq!(f.notifier.sent().len(), 1);
+        assert_eq!(f.notifier.sent()[0].0, "Nova versão 99.0.0 disponível");
+        assert!(f.core.tray_view().menu.iter().any(|item| matches!(
+            item,
+            elgin_application::tray::MenuItem::Action {
+                action: MenuAction::ShowUpdate,
+                ..
+            }
+        )));
+
+        f.core
+            .on_tray_action(TrayAction::Menu(MenuAction::ShowUpdate), None)
+            .await;
+        assert_eq!(f.notifier.sent().len(), 2);
     }
 
     #[tokio::test(start_paused = true)]

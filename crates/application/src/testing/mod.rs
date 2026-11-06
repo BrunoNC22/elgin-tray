@@ -12,6 +12,7 @@ mod gateway;
 mod hotkeys;
 mod notifier;
 mod observer;
+mod updates;
 
 pub use autostart::SpyAutostart;
 pub use clock::ManualClock;
@@ -22,3 +23,4 @@ pub use gateway::FakeBulbGateway;
 pub use hotkeys::SpyHotkeys;
 pub use notifier::SpyNotifier;
 pub use observer::SpyObserver;
+pub use updates::{SpyInstaller, StubUpdateSource};

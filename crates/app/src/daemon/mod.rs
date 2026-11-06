@@ -10,6 +10,7 @@ use std::time::Instant;
 use elgin_application::hotkeys::HotkeyAction;
 use elgin_application::ports::{
     AutostartRegistrar, BulbConnector, BulbDiscovery, CloudAccount, ConfigRepository, Notifier,
+    UpdateInstaller, UpdateSource,
 };
 use elgin_application::tray::{TrayAction, TrayViewModel};
 use elgin_ipc::messages::PanelMessage;
@@ -33,17 +34,27 @@ pub(crate) trait TrayOutput {
     fn show(&mut self, view: &TrayViewModel);
 }
 
+/// Por que o loop do daemon terminou.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DaemonExit {
+    /// "Sair" (ou Ctrl+C).
+    Quit,
+    /// Uma atualização foi instalada: abrir o executável novo depois de liberar o canal local.
+    Restart,
+}
+
 /// O loop do daemon: entrega ao núcleo os prazos, os eventos da lâmpada, os pedidos dos painéis,
 /// as ações da bandeja e os atalhos globais, e mostra na bandeja cada mudança, até "Sair" ou `exit`
 /// terminar.
-pub(crate) async fn run<R, K, D, C, P, A, N, T>(
-    mut core: DaemonCore<R, K, D, C, P, A, N>,
+pub(crate) async fn run<R, K, D, C, P, A, N, S, I, T>(
+    mut core: DaemonCore<R, K, D, C, P, A, N, S, I>,
     mut requests: mpsc::UnboundedReceiver<PanelMessage>,
     mut tray_events: mpsc::UnboundedReceiver<TrayEvent>,
     mut hotkeys: mpsc::UnboundedReceiver<HotkeyAction>,
     tray: &mut T,
     exit: impl Future<Output = ()>,
-) where
+) -> DaemonExit
+where
     T: TrayOutput,
     R: ConfigRepository,
     K: BulbConnector + Clone,
@@ -52,11 +63,16 @@ pub(crate) async fn run<R, K, D, C, P, A, N, T>(
     P: panel::PanelProcess,
     A: AutostartRegistrar,
     N: Notifier,
+    S: UpdateSource,
+    I: UpdateInstaller,
 {
     tokio::pin!(exit);
     core.on_start().await;
     let mut shown: Option<TrayViewModel> = None;
-    loop {
+    let reason = loop {
+        if core.restart_requested() {
+            break DaemonExit::Restart;
+        }
         let view = core.tray_view();
         if shown.as_ref() != Some(&view) {
             tray.show(&view);
@@ -69,14 +85,15 @@ pub(crate) async fn run<R, K, D, C, P, A, N, T>(
             Some(message) = requests.recv() => core.on_request(message).await,
             Some(event) = tray_events.recv() => {
                 if core.on_tray_action(event.action, event.anchor).await == TrayOutcome::Quit {
-                    break;
+                    break DaemonExit::Quit;
                 }
             }
             Some(action) = hotkeys.recv() => core.on_hotkey(action).await,
-            () = &mut exit => break,
+            () = &mut exit => break DaemonExit::Quit,
         }
-    }
+    };
     core.shutdown();
+    reason
 }
 
 /// Aceita painéis numa tarefa própria (aceitar dentro de um `select!` poderia perder conexões).
