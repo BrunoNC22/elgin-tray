@@ -22,10 +22,16 @@ Comandos do ctl:
 A configuração é lida de %APPDATA%\\elgin-tray\\config.toml (Windows) ou
 ~/.config/elgin-tray/config.toml (Linux); para usar outro arquivo, defina ELGIN_TRAY_CONFIG.";
 
+/// Passado pela versão anterior ao abrir a nova depois de uma atualização (a nova avisa o usuário).
+pub(crate) const UPDATED_FLAG: &str = "--atualizado";
+
 /// O que o executável deve fazer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Mode {
-    Daemon,
+    /// O app na bandeja. `just_updated`: aberto pela versão anterior logo depois de uma atualização.
+    Daemon {
+        just_updated: bool,
+    },
     /// O painel, com a posição do ícone da bandeja (se veio).
     Panel(Option<Rect>),
     Ctl(CtlCommand),
@@ -50,7 +56,10 @@ pub(crate) enum CtlCommand {
 pub(crate) fn parse(args: &[String]) -> Result<Mode, String> {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
-        [] => Ok(Mode::Daemon),
+        [] => Ok(Mode::Daemon {
+            just_updated: false,
+        }),
+        [UPDATED_FLAG] => Ok(Mode::Daemon { just_updated: true }),
         // Uma âncora malformada não impede o painel de abrir (só não fica colado no ícone).
         ["panel"] => Ok(Mode::Panel(None)),
         ["panel", "--anchor", anchor] => Ok(Mode::Panel(parse_anchor(anchor))),
@@ -146,7 +155,16 @@ mod tests {
 
     #[test]
     fn without_arguments_starts_the_daemon() {
-        assert_eq!(parse(&[]), Ok(Mode::Daemon));
+        assert_eq!(
+            parse(&[]),
+            Ok(Mode::Daemon {
+                just_updated: false
+            })
+        );
+        assert_eq!(
+            parse(&["--atualizado".to_owned()]),
+            Ok(Mode::Daemon { just_updated: true })
+        );
     }
 
     #[test]

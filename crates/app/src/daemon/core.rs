@@ -213,12 +213,10 @@ where
                     self.notify_available(version);
                 }
             }
+            // Quem avisa o usuário é a versão nova, já com o ícone na bandeja (`on_updated`): o
+            // ícone desta some ao reiniciar e poderia levar a notificação junto.
             UpdateOutcome::Installed(version) => {
                 log::info!("atualizações: versão {version} instalada; reiniciando");
-                self.notifier.notify(
-                    &format!("Atualizado para a versão {version}"),
-                    "O elgin-tray vai reiniciar na versão nova.",
-                );
                 self.restart_requested = true;
             }
             UpdateOutcome::Failed(error) => {
@@ -235,6 +233,16 @@ where
         self.notifier.notify(
             &format!("Nova versão {version} disponível"),
             "Atualize pelo gerenciador de pacotes: yay -Syu elgin-tray-bin",
+        );
+    }
+
+    /// Esta versão foi aberta logo depois de se instalar (pela versão anterior): avisa o usuário.
+    pub(crate) fn on_updated(&mut self) {
+        let current = self.updates.current();
+        log::info!("atualizado para a versão {current}");
+        self.notifier.notify(
+            &format!("Atualizado para a versão {current}"),
+            "O elgin-tray foi atualizado e já está rodando.",
         );
     }
 
@@ -869,7 +877,19 @@ mod tests {
 
         assert_eq!(f.installer.installed(), ["99.0.0".parse().unwrap()]);
         assert!(f.core.restart_requested());
-        assert_eq!(f.notifier.sent()[0].0, "Atualizado para a versão 99.0.0");
+        assert!(f.notifier.sent().is_empty(), "quem avisa é a versão nova");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_new_version_announces_the_update() {
+        let mut f = configured();
+
+        f.core.on_updated();
+
+        assert_eq!(
+            f.notifier.sent()[0].0,
+            format!("Atualizado para a versão {}", env!("CARGO_PKG_VERSION"))
+        );
     }
 
     #[tokio::test(start_paused = true)]

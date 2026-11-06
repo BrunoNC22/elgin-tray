@@ -35,7 +35,7 @@ use elgin_updater::{GitHubReleases, UreqHttp};
 use elgin_updater::{ReleaseInstaller, SelfReplace};
 use tokio::sync::{mpsc, watch};
 
-use crate::args::{CtlCommand, Mode, USAGE};
+use crate::args::{CtlCommand, Mode, UPDATED_FLAG, USAGE};
 use crate::daemon::{Adapters, ChildPanel, DaemonCore, DaemonExit};
 
 /// Como as atualizações chegam: no Windows o app instala sozinho; no Linux (pacote AUR) só avisa.
@@ -63,7 +63,7 @@ fn main() -> ExitCode {
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args::parse(&args) {
-        Ok(Mode::Daemon) => run_daemon(),
+        Ok(Mode::Daemon { just_updated }) => run_daemon(just_updated),
         Ok(Mode::Ctl(command)) => {
             console::attach_parent_console();
             run_ctl(command)
@@ -92,7 +92,7 @@ fn main() -> ExitCode {
 /// No Windows a bandeja precisa do loop de mensagens na thread principal: o daemon roda numa thread
 /// própria e conversa com a bandeja pelo [`elgin_tray_windows::SharedView`].
 #[cfg(windows)]
-fn run_daemon() -> ExitCode {
+fn run_daemon(just_updated: bool) -> ExitCode {
     use std::sync::{Arc, Mutex};
 
     let log_path = logging::init();
@@ -117,7 +117,7 @@ fn run_daemon() -> ExitCode {
                 shared: daemon_shared,
                 waker,
             };
-            let result = serve(listener, tray_events, &mut tray, notifier).await;
+            let result = serve(listener, tray_events, &mut tray, notifier, just_updated).await;
             waker.quit();
             result
         })
@@ -166,7 +166,7 @@ impl daemon::TrayOutput for WindowsTray {
 
 /// No Linux a bandeja do KDE chega na #25; até lá o daemon roda sem ícone.
 #[cfg(not(windows))]
-fn run_daemon() -> ExitCode {
+fn run_daemon(just_updated: bool) -> ExitCode {
     let log_path = logging::init();
     log::info!("elgin-tray {} iniciando", env!("CARGO_PKG_VERSION"));
     let result = block_on_local(async {
@@ -175,7 +175,14 @@ fn run_daemon() -> ExitCode {
         };
         // Sem bandeja ainda: o remetente fica vivo para o canal não fechar.
         let (_tray_sender, tray_events) = mpsc::unbounded_channel();
-        serve(listener, tray_events, &mut NoTray, LogNotifier).await
+        serve(
+            listener,
+            tray_events,
+            &mut NoTray,
+            LogNotifier,
+            just_updated,
+        )
+        .await
     });
     finish(result, log_path)
 }
@@ -219,6 +226,7 @@ async fn serve(
     tray_events: mpsc::UnboundedReceiver<daemon::TrayEvent>,
     tray: &mut impl daemon::TrayOutput,
     mut notifier: impl Notifier,
+    just_updated: bool,
 ) -> Result<DaemonExit, String> {
     let mut settings = load_settings()?;
     let mut autostart = autostart_registrar()?;
@@ -234,7 +242,7 @@ async fn serve(
     let (requests_sender, requests) = mpsc::unbounded_channel();
     let (snapshots_sender, snapshots) = watch::channel(None);
     let (shutdown_sender, shutdown) = watch::channel(false);
-    let core = DaemonCore::new(
+    let mut core = DaemonCore::new(
         settings,
         Adapters {
             connector: TuyaLanConnector::default(),
@@ -249,6 +257,9 @@ async fn serve(
         snapshots_sender,
         UPDATE_POLICY,
     );
+    if just_updated {
+        core.on_updated();
+    }
     tokio::task::spawn_local(daemon::accept_panels(
         listener,
         DaemonChannels {
@@ -311,7 +322,7 @@ fn restart_after_update() {
         .get()
         .cloned()
         .map_or_else(std::env::current_exe, Ok)
-        .and_then(|exe| std::process::Command::new(exe).spawn());
+        .and_then(|exe| std::process::Command::new(exe).arg(UPDATED_FLAG).spawn());
     match started {
         Ok(_) => log::info!("versão nova iniciada"),
         Err(error) => log::error!("não foi possível reiniciar depois da atualização: {error}"),
