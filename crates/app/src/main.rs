@@ -21,22 +21,26 @@ use elgin_application::config::{HotkeyBindings, Settings, apply_autostart};
 use elgin_application::hotkeys::HotkeyAction;
 #[cfg(windows)]
 use elgin_application::hotkeys::register_hotkeys;
-use elgin_application::ports::{
-    AutostartRegistrar, Notifier, Release, UpdateError, UpdateInstaller, UpdateSource,
-};
+use elgin_application::ports::{AutostartRegistrar, Notifier};
+#[cfg(not(windows))]
+use elgin_application::ports::{Release, UpdateError, UpdateInstaller};
 use elgin_application::tray::UpdatePolicy;
 use elgin_config::{FsStore, TomlConfigRepository};
 use elgin_ipc::session::DaemonChannels;
 use elgin_ipc::transport::{self, Instance};
 use elgin_tuya_cloud::{SystemEnv, TuyaCloud, UreqClient};
 use elgin_tuya_lan::{TuyaDiscovery, TuyaLanConnector};
+use elgin_updater::{GitHubReleases, UreqHttp};
+#[cfg(windows)]
+use elgin_updater::{ReleaseInstaller, SelfReplace};
 use tokio::sync::{mpsc, watch};
 
 use crate::args::{CtlCommand, Mode, USAGE};
 use crate::daemon::{Adapters, ChildPanel, DaemonCore, DaemonExit};
 
 /// Como as atualizações chegam: no Windows o app instala sozinho; no Linux (pacote AUR) só avisa.
-const UPDATE_POLICY: UpdatePolicy = if cfg!(windows) {
+/// Builds de desenvolvimento só avisam: nunca trocam o executável de `target/`.
+const UPDATE_POLICY: UpdatePolicy = if cfg!(all(windows, not(debug_assertions))) {
     UpdatePolicy::AutoInstall
 } else {
     UpdatePolicy::NotifyOnly
@@ -45,7 +49,18 @@ const UPDATE_POLICY: UpdatePolicy = if cfg!(windows) {
 /// Variável de ambiente para usar outro `config.toml` (desenvolvimento e testes manuais).
 const CONFIG_OVERRIDE: &str = "ELGIN_TRAY_CONFIG";
 
+/// Variável de ambiente para consultar outro endereço no lugar da API de releases do GitHub
+/// (testes manuais da atualização com um servidor local).
+const RELEASES_URL_OVERRIDE: &str = "ELGIN_TRAY_RELEASES_URL";
+
+/// O executável em uso, guardado ao iniciar: depois que uma atualização troca o arquivo, o Windows
+/// pode passar a informar o nome temporário do executável antigo.
+static EXECUTABLE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
 fn main() -> ExitCode {
+    if let Ok(executable) = std::env::current_exe() {
+        let _ = EXECUTABLE.set(executable);
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args::parse(&args) {
         Ok(Mode::Daemon) => run_daemon(),
@@ -228,8 +243,8 @@ async fn serve(
             panel: ChildPanel::default(),
             autostart,
             notifier,
-            update_source: UpdatesNotReady,
-            installer: UpdatesNotReady,
+            update_source: update_source(),
+            installer: update_installer(),
         },
         snapshots_sender,
         UPDATE_POLICY,
@@ -251,28 +266,52 @@ async fn serve(
     Ok(exit)
 }
 
-/// A fonte de versões (releases do GitHub) e o instalador chegam na #39 (Windows) e na #41
-/// (Linux); até lá a verificação responde que não está disponível.
-struct UpdatesNotReady;
-
-const UPDATES_NOT_READY: &str = "a verificação de atualizações ainda não está disponível";
-
-impl UpdateSource for UpdatesNotReady {
-    async fn latest_release(&mut self) -> Result<Release, UpdateError> {
-        Err(UpdateError::Rejected(UPDATES_NOT_READY.to_owned()))
+/// As releases do GitHub (ou o endereço de [`RELEASES_URL_OVERRIDE`]).
+fn update_source() -> GitHubReleases<UreqHttp> {
+    match std::env::var(RELEASES_URL_OVERRIDE) {
+        Ok(url) => GitHubReleases::with_url(UreqHttp::default(), url),
+        Err(_) => GitHubReleases::new(UreqHttp::default()),
     }
 }
 
-impl UpdateInstaller for UpdatesNotReady {
+/// No Windows: baixa o `.zip` da release, confere a assinatura e troca o executável.
+#[cfg(windows)]
+fn update_installer() -> ReleaseInstaller<UreqHttp, SelfReplace> {
+    ReleaseInstaller::new(
+        UreqHttp::default(),
+        SelfReplace,
+        elgin_updater::WINDOWS_X86_64,
+        *elgin_updater::VERIFYING_KEY,
+        std::env::temp_dir().join("elgin-tray-update"),
+    )
+}
+
+/// No Linux quem instala é o gerenciador de pacotes (AUR); a política lá é só avisar.
+#[cfg(not(windows))]
+fn update_installer() -> PackageManagerInstalls {
+    PackageManagerInstalls
+}
+
+#[cfg(not(windows))]
+struct PackageManagerInstalls;
+
+#[cfg(not(windows))]
+impl UpdateInstaller for PackageManagerInstalls {
     async fn install(&mut self, _release: &Release) -> Result<(), UpdateError> {
-        Err(UpdateError::Rejected(UPDATES_NOT_READY.to_owned()))
+        Err(UpdateError::Rejected(
+            "atualize pelo gerenciador de pacotes (yay -Syu elgin-tray-bin)".to_owned(),
+        ))
     }
 }
 
 /// Depois de instalar uma atualização: abre o executável novo. Chamado quando o daemon já
 /// terminou e liberou o canal local (senão a versão nova acharia que já há uma rodando).
 fn restart_after_update() {
-    let started = std::env::current_exe().and_then(|exe| std::process::Command::new(exe).spawn());
+    let started = EXECUTABLE
+        .get()
+        .cloned()
+        .map_or_else(std::env::current_exe, Ok)
+        .and_then(|exe| std::process::Command::new(exe).spawn());
     match started {
         Ok(_) => log::info!("versão nova iniciada"),
         Err(error) => log::error!("não foi possível reiniciar depois da atualização: {error}"),

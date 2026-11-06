@@ -11,4 +11,5 @@
 *.ico binary
 # Chave pública de verificação das atualizações (32 bytes, embutida no app)
 *.pub binary
+*.zip binary
 *.svg text

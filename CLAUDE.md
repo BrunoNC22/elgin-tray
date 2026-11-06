@@ -81,7 +81,7 @@ O repositório é **público**.
 | Atalhos | Texto do `config.toml` (`Ctrl+Alt+L`) interpretado por `application::hotkeys` (puro); vazio desliga o atalho. Caso de uso `register_hotkeys` devolve as mensagens dos atalhos que ficaram de fora (inválido, repetido, já usado por outro programa) e o resto segue funcionando. Windows: `WindowsHotkeys` (`RegisterHotKey` numa **thread própria** com loop de mensagens, independente da bandeja) entrega `HotkeyAction` ao loop do daemon por um canal; `DaemonCore::on_hotkey` manda o comando. Mudanças nos atalhos valem ao reiniciar. |
 | Notificações | Porta `Notifier::notify(título, texto)` (melhor esforço, sem erro). Windows: **balão do próprio ícone da bandeja** (`Shell_NotifyIconW` + `NIF_INFO`/`NIIF_USER` na janela do `tray-icon`; o Windows 10/11 mostra como notificação comum), sem dependência nova; `TrayNotifier` vem da thread da bandeja junto com o `TrayWaker`. Linux: `org.freedesktop.Notifications` com a bandeja do KDE (#25); até lá vão para o log. Usos: chave recusada sem recuperação, atalhos não registrados, atualizações (#38). |
 | Painel | Janela de **altura fixa** (320×490): a janela do Slint não acompanha bem mudanças de altura (abas, configuração), e assim ela continua colada na bandeja; um espaço elástico mantém brilho e favoritas no mesmo lugar nas duas abas. A configuração inicial aparece no lugar dos controles enquanto o snapshot traz `setup` (telas em `setup_view.rs`, QR em `qr.rs`); o daemon abre a configuração e o painel sozinho quando não há lâmpada (`DaemonCore::on_start`). Para ver as telas sem login: `cargo run -p elgin-panel --example setup_preview -- code|failed|qr|choose|working|done|lost`. |
-| Atualizações | Caso de uso `UpdateChecker` (`application::updates`): primeira verificação 30 s depois de iniciar e depois a cada 1 h (pelo `Clock`); `Version` só aceita `X.Y.Z`/`vX.Y.Z` (pré-versões não contam). Política injetada pelo `app`: `AutoInstall` instala e o daemon sai com `DaemonExit::Restart`, e o `main` abre o executável novo **depois** de liberar o canal local; `NotifyOnly` mostra "Nova versão vX" no menu e notifica uma vez por versão (`updates.last_notified_version`). Verificações automáticas que falham só vão para o log; as pedidas pelo menu sempre respondem com notificação. Portas `UpdateSource`/`UpdateInstaller`; os adaptadores reais chegam na #39/#41 (até lá `UpdatesNotReady` no `main`). |
+| Atualizações | Caso de uso `UpdateChecker` (`application::updates`): primeira verificação 30 s depois de iniciar e depois a cada 1 h (pelo `Clock`); `Version` só aceita `X.Y.Z`/`vX.Y.Z` (pré-versões não contam). Política injetada pelo `app`: `AutoInstall` instala e o daemon sai com `DaemonExit::Restart`, e o `main` abre o executável novo **depois** de liberar o canal local; `NotifyOnly` mostra "Nova versão vX" no menu e notifica uma vez por versão (`updates.last_notified_version`). Verificações automáticas que falham só vão para o log; as pedidas pelo menu sempre respondem com notificação. Portas `UpdateSource`/`UpdateInstaller`, implementadas no `elgin-updater`: `GitHubReleases` (`/releases/latest`, que ignora pré-releases) e `ReleaseInstaller` (baixa `elgin-tray-vX.Y.Z-windows-x86_64.zip`, confere a assinatura zipsign com `VERIFYING_KEY` usando o **nome do asset como contexto**, extrai o `.exe` e troca o executável com o `self-replace`). No Linux a política é só avisar (quem instala é o AUR). Builds de debug também só avisam (nunca trocam o executável de `target/`). O caminho do executável é guardado ao iniciar (`EXECUTABLE`), porque depois da troca o Windows pode informar o nome temporário do antigo. `ELGIN_TRAY_RELEASES_URL` troca a API do GitHub por outro endereço (teste manual com servidor local). |
 | Dublês de teste | **Escritos à mão** (stubs, spies, fakes), sem `mockall`. |
 | Idioma | Código (tipos, funções, variáveis) em **inglês**. Comentários, docs, issues, commits e textos da interface em **português (pt-BR)**. |
 
@@ -100,9 +100,9 @@ crates/
   icons/           elgin-icons         Renderização do ícone da bandeja (RGBA) a partir do estado.
   tray-windows/    elgin-tray-windows  Adaptador: bandeja Windows.            (só compila no Windows)
   tray-kde/        elgin-tray-kde      Adaptador: bandeja KDE (ksni).         (só compila no Linux)
-  platform-windows/ elgin-platform-windows  Autostart, atalhos, notificações, instalação de update. (Windows)
+  platform-windows/ elgin-platform-windows  Autostart e atalhos globais.          (Windows)
   platform-linux/  elgin-platform-linux    Autostart, atalhos (KGlobalAccel), notificações.        (Linux)
-  updater/         elgin-updater       Adaptador: releases do GitHub + verificação de assinatura.
+  updater/         elgin-updater       Adaptador: releases do GitHub, verificação de assinatura e troca do executável.
   panel/           elgin-panel         Painel Slint + view-model puro.
   app/             elgin-tray (bin)    Composition root: escolhe os adaptadores por `cfg(target_os)`.
 ```
@@ -114,9 +114,9 @@ crates/
   `[target.'cfg(...)'.dependencies]`. Dependências compartilhadas ficam em `[workspace.dependencies]`
   (nas crates: `dep = { workspace = true }`); lints em `[workspace.lints]`.
 - Para conferir o lado Linux a partir do Windows:
-  `cargo clippy --workspace --exclude elgin-tray --exclude elgin-tuya-cloud --exclude elgin-panel --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings`
+  `cargo clippy --workspace --exclude elgin-tray --exclude elgin-tuya-cloud --exclude elgin-panel --exclude elgin-updater --all-targets --all-features --target x86_64-unknown-linux-gnu -- -D warnings`
   (alvo instalado com `rustup target add x86_64-unknown-linux-gnu`; só checa, não gera executável). As crates
-  excluídas dependem de bibliotecas C do alvo (`ring`, do TLS do `ureq`/`rustls`, e `fontconfig`, do Slint), que
+  excluídas dependem de bibliotecas C do alvo (`ring`, do TLS do `ureq`/`rustls` usado pela nuvem e pelo atualizador, e `fontconfig`, do Slint), que
   não compilam a partir do Windows; o CI no Ubuntu cobre o resto.
 - Diferenças entre Windows e Linux ficam **só** nos adaptadores e na escolha feita pelo `app`
   (ex.: a política de atualização "instalar sozinho" vs "só avisar" é um valor injetado pelo `app`).

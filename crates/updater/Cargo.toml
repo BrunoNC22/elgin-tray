@@ -9,6 +9,17 @@ publish.workspace = true
 
 [dependencies]
 elgin-application = { workspace = true }
+log = { workspace = true }
+self-replace = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+ureq = { workspace = true }
+zip = { workspace = true }
+zipsign-api = { workspace = true, features = ["verify-zip"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true
