@@ -1,0 +1,143 @@
+# Release por tag: `git tag v1.2.3 && git push origin v1.2.3` (ver docs/releasing.md).
+#
+# Confere que a tag bate com a versão do workspace, roda os testes, compila Windows e Linux em
+# release, assina os pacotes com o zipsign e publica o GitHub Release com notas e SHA-256.
+# Tags com sufixo (`v1.2.3-test.1`) viram pré-release, que o app não oferece como atualização.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Versão da tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - id: check
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          version=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "elgin-tray") | .version')
+          case "$tag" in
+            "v$version") prerelease=false ;;
+            "v$version"-*) prerelease=true ;;
+            *)
+              echo "::error::A tag $tag não bate com a versão do workspace ($version). Atualize o Cargo.toml antes de criar a tag."
+              exit 1
+              ;;
+          esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x86_64
+          - os: ubuntu-latest
+            platform: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    env:
+      PACKAGE: elgin-tray-${{ needs.version.outputs.tag }}-${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # Mesmas dependências de sistema do CI (manter igual ao `depends` do PKGBUILD, #40).
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxkbcommon-dev
+
+      - run: cargo test --workspace --all-features --locked
+      - run: cargo build --release --locked -p elgin-tray
+
+      # Arquivos na raiz do pacote (sem pasta), para o atualizador achar o executável direto.
+      - name: Empacotar (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p "dist/$PACKAGE"
+          cp target/release/elgin-tray.exe README.md "dist/$PACKAGE/"
+          if [ -f LICENSE ]; then cp LICENSE "dist/$PACKAGE/"; fi
+          (cd "dist/$PACKAGE" && 7z a -tzip "../$PACKAGE.zip" *)
+      - name: Empacotar (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p "dist/$PACKAGE"
+          cp target/release/elgin-tray assets/elgin-tray.desktop assets/elgin-tray.png README.md \
+            "dist/$PACKAGE/"
+          if [ -f LICENSE ]; then cp LICENSE "dist/$PACKAGE/"; fi
+          (cd "dist/$PACKAGE" && tar -czf "../$PACKAGE.tar.gz" *)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE }}
+          path: dist/${{ env.PACKAGE }}.*
+          if-no-files-found: error
+
+  publish:
+    name: Assinar e publicar
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: cargo install zipsign --version 0.2.2 --locked
+
+      # A assinatura usa o nome do arquivo como contexto (padrão do zipsign): o atualizador confere
+      # com o nome do asset. A verificação com a chave pública do repositório garante que o segredo
+      # é o par da chave embutida no app.
+      - name: Assinar
+        shell: bash
+        env:
+          ZIPSIGN_PRIVATE_KEY: ${{ secrets.ZIPSIGN_PRIVATE_KEY }}
+        run: |
+          if [ -z "$ZIPSIGN_PRIVATE_KEY" ]; then
+            echo "::error::Falta o segredo ZIPSIGN_PRIVATE_KEY (ver docs/releasing.md)."
+            exit 1
+          fi
+          key="$RUNNER_TEMP/zipsign.priv"
+          printf '%s' "$ZIPSIGN_PRIVATE_KEY" | base64 -d > "$key"
+          trap 'rm -f "$key"' EXIT
+          cd dist
+          for file in *.zip; do zipsign sign zip "$file" "$key"; done
+          for file in *.tar.gz; do zipsign sign tar "$file" "$key"; done
+          for file in *.zip; do zipsign verify zip "$file" ../crates/updater/keys/zipsign.pub; done
+          for file in *.tar.gz; do zipsign verify tar "$file" ../crates/updater/keys/zipsign.pub; done
+          sha256sum -- *.zip *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publicar o GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          flags=(--title "elgin-tray $TAG" --generate-notes --verify-tag)
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$TAG" "${flags[@]}" dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt

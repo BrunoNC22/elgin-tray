@@ -13,6 +13,10 @@ tuya-raw.json
 .env
 .env.*
 
+# Chave privada de assinatura das releases (fica fora do repositório, ver docs/releasing.md)
+*.priv
+*.key
+
 # Logs
 *.log
 

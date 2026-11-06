@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Elgin Tray
+Comment=Controle da lâmpada Elgin Smart pela bandeja
+Exec=elgin-tray
+Icon=elgin-tray
+Terminal=false
+Categories=Utility;
+StartupNotify=false
