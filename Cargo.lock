@@ -1239,10 +1239,13 @@ dependencies = [
  "elgin-domain",
  "elgin-ipc",
  "qrcode",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tokio",
  "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]

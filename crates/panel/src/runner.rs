@@ -25,6 +25,9 @@ const DISC_PIXELS: u32 = 440;
 /// Abre o painel e só volta quando ele fecha (Esc, perda de foco ou o daemon mandar fechar).
 /// `anchor` é onde o ícone da bandeja está (o painel abre colado nele).
 pub fn run(anchor: Option<Rect>) -> Result<(), String> {
+    // No KDE quem posiciona é o KWin, preparado antes de a janela existir.
+    #[cfg(target_os = "linux")]
+    crate::kwin::prepare_window(anchor);
     let window =
         Panel::new().map_err(|error| format!("não foi possível criar o painel: {error}"))?;
     window.set_disc(disc_slint_image(DISC_PIXELS));
@@ -134,9 +137,16 @@ fn configure_native_window(window: &Panel, outgoing: &Outgoing) {
     use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
 
     let closing = outgoing.clone();
+    // No X11 pode chegar um "perdeu o foco" antes do primeiro foco (spike #26): só conta depois
+    // que o painel teve o foco.
+    let mut had_focus = false;
     window.window().on_winit_window_event(move |_, event| {
-        if let winit::event::WindowEvent::Focused(false) = event {
-            close_now(&closing);
+        if let winit::event::WindowEvent::Focused(focused) = event {
+            if *focused {
+                had_focus = true;
+            } else if had_focus {
+                close_now(&closing);
+            }
         }
         EventResult::Propagate
     });
@@ -150,8 +160,8 @@ fn configure_native_window(window: &Panel, outgoing: &Outgoing) {
     });
 }
 
-/// Coloca o painel colado no ícone, do lado da barra de tarefas (Windows). No Linux o
-/// posicionamento depende da sessão (Wayland/X11) e chega na #31.
+/// Coloca o painel colado no ícone, do lado da barra de tarefas (Windows). No KDE o script do
+/// KWin já fez isso ([`crate::kwin::prepare_window`]).
 fn place(window: &Panel, anchor: Option<Rect>) {
     #[cfg(windows)]
     {

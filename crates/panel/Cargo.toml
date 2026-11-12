@@ -20,5 +20,11 @@ slint-build = { workspace = true }
 [lints]
 workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "time"] }
+zbus = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }

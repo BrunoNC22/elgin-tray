@@ -2,9 +2,13 @@
 
 pub mod disc;
 pub mod disc_image;
+#[cfg(target_os = "linux")]
+mod kwin;
 #[cfg(windows)]
 mod monitor;
 pub mod placement;
+#[cfg(target_os = "linux")]
+mod plasma;
 pub mod qr;
 pub mod runner;
 pub mod setup_view;
