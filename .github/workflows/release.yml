@@ -141,3 +141,45 @@ jobs:
           flags=(--title "elgin-tray $TAG" --generate-notes --verify-tag)
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
           gh release create "$TAG" "${flags[@]}" dist/*.zip dist/*.tar.gz dist/SHA256SUMS.txt
+
+  # Atualiza o pacote elgin-tray-bin no AUR (#40). Só para releases de verdade; sem os segredos do
+  # AUR o job avisa e não falha (ver packaging/aur/README.md).
+  aur:
+    name: Publicar no AUR
+    needs: [version, publish]
+    if: needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Conferir os segredos do AUR
+        id: secrets
+        shell: bash
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_PRIVATE_KEY" ]; then
+            echo "::warning::Sem o segredo AUR_SSH_PRIVATE_KEY: o AUR não foi atualizado (ver packaging/aur/README.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Versão no PKGBUILD
+        if: steps.secrets.outputs.ready == 'true'
+        shell: bash
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: sed -i "s/^pkgver=.*/pkgver=${TAG#v}/; s/^pkgrel=.*/pkgrel=1/" packaging/aur/PKGBUILD
+      # A action recalcula o sha256sums (baixa o .tar.gz recém-publicado), gera o .SRCINFO, testa o
+      # makepkg e faz o push para o repositório git do AUR.
+      - name: Publicar
+        if: steps.secrets.outputs.ready == 'true'
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        with:
+          pkgname: elgin-tray-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          updpkgsums: true
+          test: true
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: elgin-tray ${{ needs.version.outputs.tag }}

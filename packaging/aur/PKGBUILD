@@ -1,0 +1,31 @@
+# Maintainer: Bruno Nascimento <https://github.com/BrunoNC22>
+#
+# Pacote binário publicado pelo CI a cada tag vX.Y.Z (.github/workflows/release.yml, job "aur"):
+# o CI troca pkgver, recalcula o sha256sums e manda para o AUR. Para testar localmente, ver
+# packaging/aur/README.md.
+pkgname=elgin-tray-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Controle da lâmpada Elgin Smart (Tuya) pela bandeja do KDE Plasma, via rede local"
+arch=('x86_64')
+url="https://github.com/BrunoNC22/elgin-tray"
+license=('MIT')
+# Medido no spike #26: fontconfig/freetype2 ligados; Wayland e X11 carregados em tempo de execução.
+depends=('fontconfig' 'freetype2' 'gcc-libs' 'glibc' 'libx11' 'libxcursor' 'libxi'
+         'libxkbcommon' 'libxkbcommon-x11' 'wayland')
+provides=('elgin-tray')
+conflicts=('elgin-tray')
+# O executável já vem otimizado e sem símbolos (perfil de release com strip).
+options=('!debug' '!strip')
+source=("$url/releases/download/v$pkgver/elgin-tray-v$pkgver-linux-x86_64.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    install -Dm755 elgin-tray "$pkgdir/usr/bin/elgin-tray"
+    install -Dm644 elgin-tray.desktop "$pkgdir/usr/share/applications/elgin-tray.desktop"
+    install -Dm644 elgin-tray.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/elgin-tray.png"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    if [ -f LICENSE ]; then
+        install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    fi
+}

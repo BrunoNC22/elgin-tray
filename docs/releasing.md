@@ -24,6 +24,9 @@ Release.
    - `SHA256SUMS.txt`;
    - notas geradas a partir dos commits.
 
+   Em seguida o job **Publicar no AUR** atualiza o pacote `elgin-tray-bin` (só em releases de
+   verdade; precisa dos segredos `AUR_*`, ver [packaging/aur/README.md](../packaging/aur/README.md)).
+
 Se a tag não bater com a versão do `Cargo.toml`, o workflow para logo no começo. Para testar o
 workflow sem publicar uma versão de verdade, use uma tag com sufixo (`vX.Y.Z-test.1`): ela vira
 **pré-release**, que o app não oferece como atualização. Depois apague:
