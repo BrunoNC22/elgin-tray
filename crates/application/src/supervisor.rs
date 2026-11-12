@@ -81,6 +81,8 @@ pub struct ConnectionSupervisor<K: BulbConnector, D, C> {
     next_attempt_at: Option<Instant>,
     /// Eventos da conexão atual (`None` sem conexão).
     events: Option<K::Events>,
+    /// A nuvem confirmou a chave: recusas são falhas comuns até a próxima conexão ou troca de alvo.
+    key_confirmed: bool,
 }
 
 impl<K: BulbConnector, D, C> std::fmt::Debug for ConnectionSupervisor<K, D, C> {
@@ -90,6 +92,7 @@ impl<K: BulbConnector, D, C> std::fmt::Debug for ConnectionSupervisor<K, D, C> {
             .field("failures", &self.failures)
             .field("next_attempt_at", &self.next_attempt_at)
             .field("connected", &self.events.is_some())
+            .field("key_confirmed", &self.key_confirmed)
             .finish_non_exhaustive()
     }
 }
@@ -118,6 +121,7 @@ where
             failures: 0,
             next_attempt_at: Some(now),
             events: None,
+            key_confirmed: false,
         }
     }
 
@@ -135,7 +139,22 @@ where
         self.target = target;
         self.failures = 0;
         self.events = None;
+        self.key_confirmed = false;
         self.next_attempt_at = Some(self.clock.now());
+    }
+
+    /// Depois de [`SupervisorEvent::KeyRejected`], a nuvem informou a mesma chave: a recusa não
+    /// era da chave (a lâmpada fecha conexões a mais do mesmo jeito). Fica offline e tenta de novo
+    /// com espera crescente; as próximas recusas viram falhas comuns, sem consultar a nuvem outra vez.
+    pub fn key_confirmed<O, CC>(&mut self, controller: &mut BulbController<K::Gateway, O, CC>)
+    where
+        O: BulbObserver,
+        CC: Clock,
+    {
+        self.key_confirmed = true;
+        self.failures += 1;
+        controller.detach(ConnectionStatus::Offline);
+        self.next_attempt_at = Some(self.clock.now() + self.backoff());
     }
 
     /// Tenta conectar, se já chegou a hora.
@@ -186,6 +205,7 @@ where
             Ok(bulb_events) => {
                 self.events = Some(bulb_events);
                 self.failures = 0;
+                self.key_confirmed = false;
                 self.next_attempt_at = None;
             }
             Err(error) => events.extend(self.fail(controller, error, true).await),
@@ -229,7 +249,7 @@ where
         CC: Clock,
     {
         self.events = None;
-        if error == GatewayError::KeyRejected {
+        if error == GatewayError::KeyRejected && !self.key_confirmed {
             self.failures = 0;
             self.next_attempt_at = None;
             controller.detach(ConnectionStatus::KeyRejected);
@@ -529,6 +549,69 @@ mod tests {
         assert_eq!(events, [SupervisorEvent::KeyRejected]);
         assert_eq!(f.connection(), ConnectionStatus::KeyRejected);
         assert_eq!(f.supervisor.next_attempt_at(), None);
+    }
+
+    #[tokio::test]
+    async fn a_confirmed_key_goes_offline_and_tries_again_later() {
+        let mut f = fixture(Some(endpoint(10)));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.tick().await;
+
+        f.supervisor.key_confirmed(&mut f.controller);
+
+        assert_eq!(f.connection(), ConnectionStatus::Offline);
+        assert_eq!(f.supervisor.next_attempt_at(), Some(f.clock.now() + SECOND));
+    }
+
+    #[tokio::test]
+    async fn after_a_confirmed_key_refusals_are_ordinary_failures() {
+        let mut f = fixture(Some(endpoint(10)));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.tick().await;
+        f.supervisor.key_confirmed(&mut f.controller);
+        f.wait_for_next_attempt();
+        f.connector.fail_with(GatewayError::KeyRejected);
+
+        let events = f.tick().await;
+
+        assert!(events.is_empty());
+        assert_eq!(f.connection(), ConnectionStatus::Offline);
+        assert_eq!(
+            f.supervisor.next_attempt_at(),
+            Some(f.clock.now() + 2 * SECOND)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_connection_forgets_the_confirmed_key() {
+        let mut f = fixture(Some(endpoint(10)));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.tick().await;
+        f.supervisor.key_confirmed(&mut f.controller);
+        f.wait_for_next_attempt();
+        f.connector.succeed_with(bulb());
+        f.tick().await;
+
+        let events = f
+            .supervisor
+            .connection_lost(&mut f.controller, GatewayError::KeyRejected)
+            .await;
+
+        assert_eq!(events, [SupervisorEvent::KeyRejected]);
+    }
+
+    #[tokio::test]
+    async fn a_new_target_forgets_the_confirmed_key() {
+        let mut f = fixture(Some(endpoint(10)));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.tick().await;
+        f.supervisor.key_confirmed(&mut f.controller);
+
+        f.supervisor.update_target(target(Some(endpoint(10))));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        let events = f.tick().await;
+
+        assert_eq!(events, [SupervisorEvent::KeyRejected]);
     }
 
     #[tokio::test]

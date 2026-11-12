@@ -231,12 +231,15 @@ pub enum RecoveryError {
     Temporary(String),
     /// Não dá para resolver sozinho: o usuário precisa refazer a configuração.
     NeedsReconfiguration(String),
+    /// A nuvem informa a mesma chave: ela está certa e a recusa veio de outra coisa (a lâmpada
+    /// fecha conexões a mais do mesmo jeito que fecha a de chave errada).
+    KeyUnchanged,
 }
 
 /// A lâmpada recusou a local key: busca a chave atual na nuvem com a sessão salva e grava.
 ///
-/// Devolve a configuração da lâmpada com a chave nova. Se a nuvem devolver a **mesma** chave, a
-/// recuperação não resolve (a lâmpada pode ter sido resetada sem parear de novo): pede reconfiguração.
+/// Devolve a configuração da lâmpada com a chave nova. Se a nuvem devolver a **mesma** chave,
+/// devolve [`RecoveryError::KeyUnchanged`]: não há o que recuperar, é só tentar conectar de novo.
 pub async fn recover_local_key<R, C>(
     settings: &mut Settings<R>,
     cloud: &mut C,
@@ -275,9 +278,7 @@ where
         .find(|device| device.id == bulb_id.as_str())
         .ok_or_else(|| needs_setup("a lâmpada não está mais na conta do Smart Life"))?;
     if device.local_key == current.local_key {
-        return Err(needs_setup(
-            "a nuvem informa a mesma chave que a lâmpada recusou",
-        ));
+        return Err(RecoveryError::KeyUnchanged);
     }
 
     let recovered = BulbConfig {
@@ -664,22 +665,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn recovery_needs_reconfiguration_when_the_bulb_left_the_account_or_the_key_is_the_same()
-    {
-        for devices in [Vec::new(), vec![cloud_device("bf1", "Quarto", true)]] {
-            let (mut settings, _) = configured("chave-bf1", Some("sessao"));
-            let mut cloud = StubCloudAccount::new();
-            cloud.list_returns(Ok(CloudDevices {
-                devices,
-                session: CloudSession::new("sessao"),
-            }));
+    async fn recovery_needs_reconfiguration_when_the_bulb_left_the_account() {
+        let (mut settings, _) = configured("chave-bf1", Some("sessao"));
+        let mut cloud = StubCloudAccount::new();
+        cloud.list_returns(Ok(CloudDevices {
+            devices: Vec::new(),
+            session: CloudSession::new("sessao"),
+        }));
 
-            let result = recover_local_key(&mut settings, &mut cloud, &bulb_id()).await;
+        let result = recover_local_key(&mut settings, &mut cloud, &bulb_id()).await;
 
-            assert!(
-                matches!(result, Err(RecoveryError::NeedsReconfiguration(_))),
-                "{result:?}"
-            );
-        }
+        assert!(matches!(
+            result,
+            Err(RecoveryError::NeedsReconfiguration(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_same_key_in_the_cloud_means_the_key_was_not_the_problem() {
+        let (mut settings, _) = configured("chave-bf1", Some("sessao"));
+        let mut cloud = StubCloudAccount::new();
+        cloud.list_returns(Ok(CloudDevices {
+            devices: vec![cloud_device("bf1", "Quarto", true)],
+            session: CloudSession::new("sessao"),
+        }));
+
+        let result = recover_local_key(&mut settings, &mut cloud, &bulb_id()).await;
+
+        assert_eq!(result, Err(RecoveryError::KeyUnchanged));
     }
 }

@@ -484,6 +484,14 @@ where
                 log::info!("recuperação da chave adiada ({reason})");
                 self.recovery_retry_at = Some(TokioClock.now() + RECOVERY_RETRY);
             }
+            Err(RecoveryError::KeyUnchanged) => {
+                log::info!(
+                    "a nuvem confirma a chave; a lâmpada deve estar com conexões demais, tentando de novo"
+                );
+                if let Some(supervisor) = &mut self.supervisor {
+                    supervisor.key_confirmed(&mut self.controller);
+                }
+            }
         }
     }
 
@@ -812,6 +820,40 @@ mod tests {
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].0, "A lâmpada precisa ser reconfigurada");
         assert!(sent[0].1.contains("Reconfigurar lâmpada"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refusal_with_the_key_confirmed_by_the_cloud_retries_until_it_connects() {
+        // A lâmpada lotada de conexões fecha a nova como se a chave estivesse errada.
+        let mut f = configured();
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.cloud.list_returns(Ok(CloudDevices {
+            devices: vec![CloudDevice {
+                id: "bf1".to_owned(),
+                name: "Quarto".to_owned(),
+                local_key: LocalKey::new("chave-velha"),
+                category: "dj".to_owned(),
+                is_light: true,
+                product_name: "10W".to_owned(),
+            }],
+            session: CloudSession::new("sessao-renovada"),
+        }));
+        f.connector.fail_with(GatewayError::KeyRejected);
+        f.connector.succeed_with(FakeBulbGateway::new(white(40)));
+
+        f.settle().await;
+        assert_eq!(f.snapshot().connection, ConnectionDto::Offline);
+        assert!(f.notifier.sent().is_empty());
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        f.settle().await;
+        assert_eq!(f.snapshot().connection, ConnectionDto::Offline);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        f.settle().await;
+
+        assert_eq!(f.snapshot().connection, ConnectionDto::Online);
+        assert_eq!(f.connector.attempts().len(), 3);
+        assert!(f.notifier.sent().is_empty());
     }
 
     #[tokio::test(start_paused = true)]

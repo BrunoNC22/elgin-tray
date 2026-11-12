@@ -150,6 +150,11 @@ crates/
   cmd 13; manda push (cmd 8) a cada mudança, inclusive as feitas por outra conexão; aceita **pelo menos duas
   conexões locais ao mesmo tempo**; com a **chave errada, fecha a conexão** logo depois do pedido de
   negociação, sem responder (tratado como `KeyRejected`).
+- **Conexões demais (#46):** com várias conexões abertas (visto com o daemon do Windows, o Smart Life
+  aberto e o daemon do Arch), a lâmpada fecha a conexão nova **do mesmo jeito que a de chave errada**.
+  Por isso, se a recuperação pela nuvem devolve a mesma chave (`RecoveryError::KeyUnchanged`), o daemon
+  não pede reconfiguração: chama `ConnectionSupervisor::key_confirmed`, fica offline e tenta de novo com
+  espera crescente, tratando as recusas seguintes como falha comum até conectar.
 - **Firewall do Windows:** a descoberta precisa receber UDP da lâmpada (porta 7000). Na primeira execução o
   Windows pergunta se libera o executável; se for negado, a descoberta não acha nada (a conexão TCP, que é
   de saída, continua funcionando com o IP salvo).

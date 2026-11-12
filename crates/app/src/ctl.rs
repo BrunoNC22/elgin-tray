@@ -312,7 +312,8 @@ fn describe_error(error: GatewayError) -> String {
             "a lâmpada não respondeu na rede (ela está ligada no interruptor?)".to_owned()
         }
         GatewayError::KeyRejected => "a lâmpada recusou a chave local (ela foi pareada de novo? \
-                                      é preciso buscar a chave nova)"
+                                      é preciso buscar a chave nova; ou ela está com conexões \
+                                      demais abertas)"
             .to_owned(),
         other => other.to_string(),
     }
