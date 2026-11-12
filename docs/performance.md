@@ -40,4 +40,32 @@ Get-Counter '\Processo(elgin-tray)\Conjunto de trabalho - particular'   # Window
 
 ## Arch Linux (KDE Plasma)
 
-A medir junto com a bandeja do KDE (#25).
+Medido em 2026-11-12, build de release (0.1.0) com a bandeja do KDE (#25) e o painel posicionado
+pelo KWin (#31), Arch Linux, KDE Plasma 6.7.5 em Wayland, Intel Core i5-4590 (4 núcleos,
+3,3 GHz), 11 GB de RAM, lâmpada conectada pela rede o tempo todo.
+
+| Medida | Resultado | Meta |
+|---|---|---|
+| Daemon parado, **memória privada suja** (heap e dados do processo) | **3,4 MB** depois de 10 min (2,8 MB aos 30 s) | ≤ 15 MB ✅ |
+| Daemon parado, RSS / PSS | 15,4 MB / 11,1 MB (pico 17 MB); o resto é código do executável mapeado do disco, compartilhado e descartável | — |
+| Daemon parado, CPU em 10 min | **20 ms** (0,003%): heartbeat a cada 10 s e a verificação de atualizações | ~0% ✅ |
+| Daemon: threads / descritores abertos | 1–2 / 15 | — |
+| Painel: do clique no ícone até a janela entrar no KWin | **149–204 ms** (6 aberturas; inclui criar o processo, ler a barra do Plasma, carregar o script do KWin e iniciar o Slint) | < 300 ms ✅ |
+| Painel aberto, memória | 4,2 MB privados sujos; 24 MB de RSS | — |
+| Tamanho do executável | 20,4 MB (daemon + painel + CLI; o `zbus` da bandeja e do posicionamento pesa mais que no Windows) | — |
+
+O daemon roda numa thread só (runtime `current_thread`); a segunda aparece só enquanto a consulta de
+atualizações (bloqueante) está em andamento. O clique foi simulado pelo DBus (`Activate` no
+`StatusNotifierItem`), igual ao que o Plasma faz.
+
+### Como medir
+
+Com um build de release e uma cópia do config com `autostart = false` (para não registrar o
+executável de teste no início da sessão), e nenhum outro `elgin-tray` rodando:
+
+```sh
+ELGIN_TRAY_CONFIG=/caminho/config-de-teste.toml tools/perf/idle.sh ./target/release/elgin-tray 10
+```
+
+O script espera 30 s, mostra a memória (`/proc/<pid>/smaps_rollup`), espera os minutos pedidos e
+mostra a memória de novo e o tempo de CPU gasto (`/proc/<pid>/stat`).
