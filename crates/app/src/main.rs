@@ -164,7 +164,8 @@ impl daemon::TrayOutput for WindowsTray {
     }
 }
 
-/// No Linux a bandeja do KDE chega na #25; até lá o daemon roda sem ícone.
+/// No KDE o ícone (`ksni`) roda em tarefas do próprio runtime do daemon. Se o ícone não puder ser
+/// criado (sem sessão DBus), o daemon segue sem ele: atalhos e painel continuam funcionando.
 #[cfg(not(windows))]
 fn run_daemon(just_updated: bool) -> ExitCode {
     let log_path = logging::init();
@@ -173,12 +174,24 @@ fn run_daemon(just_updated: bool) -> ExitCode {
         let Some(listener) = claim_instance().await? else {
             return Ok(DaemonExit::Quit);
         };
-        // Sem bandeja ainda: o remetente fica vivo para o canal não fechar.
-        let (_tray_sender, tray_events) = mpsc::unbounded_channel();
+        let (tray_sender, tray_events) = mpsc::unbounded_channel();
+        let tray = elgin_tray_kde::start(move |action, point| {
+            // O Plasma manda o ponto do clique, não o retângulo do ícone.
+            let anchor = point.map(|point| daemon::Anchor {
+                x: point.x,
+                y: point.y,
+                width: 1,
+                height: 1,
+            });
+            let _ = tray_sender.send(daemon::TrayEvent { action, anchor });
+        })
+        .await
+        .inspect_err(|error| log::warn!("{error}"))
+        .ok();
         serve(
             listener,
             tray_events,
-            &mut NoTray,
+            &mut KdeTray(tray),
             LogNotifier,
             just_updated,
         )
@@ -187,8 +200,9 @@ fn run_daemon(just_updated: bool) -> ExitCode {
     finish(result, log_path)
 }
 
+/// A bandeja do KDE vista pelo daemon (`None` se o ícone não pôde ser criado).
 #[cfg(not(windows))]
-struct NoTray;
+struct KdeTray(Option<elgin_tray_kde::KdeTray>);
 
 /// As notificações do KDE chegam com a bandeja (#25); até lá vão para o log.
 #[cfg(not(windows))]
@@ -202,8 +216,12 @@ impl Notifier for LogNotifier {
 }
 
 #[cfg(not(windows))]
-impl daemon::TrayOutput for NoTray {
-    fn show(&mut self, _view: &elgin_application::tray::TrayViewModel) {}
+impl daemon::TrayOutput for KdeTray {
+    fn show(&mut self, view: &elgin_application::tray::TrayViewModel) {
+        if let Some(tray) = &self.0 {
+            tray.show(view);
+        }
+    }
 }
 
 /// Vira o daemon (`Some(listener)`) ou avisa o que já está rodando (`None`).

@@ -11,5 +11,14 @@ publish.workspace = true
 elgin-application = { workspace = true }
 elgin-icons = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+elgin-domain = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+
 [lints]
 workspace = true
