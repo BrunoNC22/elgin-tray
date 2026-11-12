@@ -8,6 +8,8 @@ pub mod placement;
 pub mod qr;
 pub mod runner;
 pub mod setup_view;
+#[cfg(target_os = "linux")]
+mod spike;
 pub mod view_model;
 
 /// Código gerado pelo Slint a partir de `ui/panel.slint`.

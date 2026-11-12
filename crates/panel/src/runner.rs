@@ -25,6 +25,8 @@ const DISC_PIXELS: u32 = 440;
 /// Abre o painel e só volta quando ele fecha (Esc, perda de foco ou o daemon mandar fechar).
 /// `anchor` é onde o ícone da bandeja está (o painel abre colado nele).
 pub fn run(anchor: Option<Rect>) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    crate::spike::before_window(anchor);
     let window =
         Panel::new().map_err(|error| format!("não foi possível criar o painel: {error}"))?;
     window.set_disc(disc_slint_image(DISC_PIXELS));
@@ -47,6 +49,11 @@ pub fn run(anchor: Option<Rect>) -> Result<(), String> {
     window.show().map_err(|error| error.to_string())?;
     configure_native_window(&window, &outgoing);
     place(&window, anchor);
+    #[cfg(target_os = "linux")]
+    eprintln!(
+        "[spike] janela mostrada: {}",
+        crate::spike::elapsed_since_click()
+    );
     slint::run_event_loop().map_err(|error| error.to_string())?;
     // O daemon precisa saber que o painel fechou (para um clique no ícone logo depois não
     // reabrir): dá um tempinho para a mensagem sair antes de o processo terminar.
@@ -135,8 +142,11 @@ fn configure_native_window(window: &Panel, outgoing: &Outgoing) {
 
     let closing = outgoing.clone();
     window.window().on_winit_window_event(move |_, event| {
-        if let winit::event::WindowEvent::Focused(false) = event {
-            close_now(&closing);
+        if let winit::event::WindowEvent::Focused(focused) = event {
+            eprintln!("[spike] Focused({focused})");
+            if !focused && std::env::var("SPIKE_KEEP_OPEN").is_err() {
+                close_now(&closing);
+            }
         }
         EventResult::Propagate
     });

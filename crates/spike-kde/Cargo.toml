@@ -1,0 +1,10 @@
+[package]
+name = "spike-kde"
+description = "Spike #26 (descartável): bandeja ksni que mostra as coordenadas do clique e abre o painel."
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+ksni = "0.3"
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
