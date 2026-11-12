@@ -192,7 +192,7 @@ fn run_daemon(just_updated: bool) -> ExitCode {
             listener,
             tray_events,
             &mut KdeTray(tray),
-            LogNotifier,
+            elgin_platform_linux::DesktopNotifier::connect().await,
             just_updated,
         )
         .await
@@ -203,17 +203,6 @@ fn run_daemon(just_updated: bool) -> ExitCode {
 /// A bandeja do KDE vista pelo daemon (`None` se o ícone não pôde ser criado).
 #[cfg(not(windows))]
 struct KdeTray(Option<elgin_tray_kde::KdeTray>);
-
-/// As notificações do KDE chegam com a bandeja (#25); até lá vão para o log.
-#[cfg(not(windows))]
-struct LogNotifier;
-
-#[cfg(not(windows))]
-impl Notifier for LogNotifier {
-    fn notify(&mut self, title: &str, body: &str) {
-        log::info!("notificação: {title} — {body}");
-    }
-}
 
 #[cfg(not(windows))]
 impl daemon::TrayOutput for KdeTray {

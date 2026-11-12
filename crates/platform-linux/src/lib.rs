@@ -5,5 +5,7 @@
 #![cfg(target_os = "linux")]
 
 mod autostart;
+mod notify;
 
 pub use autostart::{AutostartFiles, DesktopAutostart, FsAutostartFiles};
+pub use notify::DesktopNotifier;

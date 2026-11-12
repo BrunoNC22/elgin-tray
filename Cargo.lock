@@ -1251,6 +1251,9 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "elgin-application",
+ "log",
+ "tokio",
+ "zbus",
 ]
 
 [[package]]
