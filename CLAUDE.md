@@ -147,11 +147,11 @@ crates/
   captura real (`tools/tuya-vectors/capture_broadcast.py`).
 - Dados necessários por lâmpada: `device_id`, `ip`, `local_key`, `version`.
 - Comportamento confirmado na lâmpada real (#15): responde a consulta com cmd 16 e confirma comandos com
-  cmd 13; manda push (cmd 8) a cada mudança, inclusive as feitas por outra conexão; aceita **pelo menos duas
-  conexões locais ao mesmo tempo**; com a **chave errada, fecha a conexão** logo depois do pedido de
+  cmd 13; manda push (cmd 8) a cada mudança, inclusive as feitas por outra conexão; aceita **no máximo três
+  conexões locais ao mesmo tempo** (#46); com a **chave errada, fecha a conexão** logo depois do pedido de
   negociação, sem responder (tratado como `KeyRejected`).
-- **Conexões demais (#46):** com várias conexões abertas (visto com o daemon do Windows, o Smart Life
-  aberto e o daemon do Arch), a lâmpada fecha a conexão nova **do mesmo jeito que a de chave errada**.
+- **Conexões demais (#46):** a partir da quarta conexão local (ex.: daemon no Windows, daemon no Arch e
+  duas `ctl`), a lâmpada fecha a conexão nova **do mesmo jeito que a de chave errada**.
   Por isso, se a recuperação pela nuvem devolve a mesma chave (`RecoveryError::KeyUnchanged`), o daemon
   não pede reconfiguração: chama `ConnectionSupervisor::key_confirmed`, fica offline e tenta de novo com
   espera crescente, tratando as recusas seguintes como falha comum até conectar.
