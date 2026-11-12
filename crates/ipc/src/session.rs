@@ -63,7 +63,7 @@ where
             .await
             .is_err()
     {
-        return;
+        return forward_remaining(&mut reader, &mut decoder, &channels.requests).await;
     }
 
     loop {
@@ -85,7 +85,7 @@ where
                 if let Some(snapshot) = latest
                     && write(&mut writer, &DaemonMessage::Snapshot(snapshot)).await.is_err()
                 {
-                    return;
+                    return forward_remaining(&mut reader, &mut decoder, &channels.requests).await;
                 }
             }
             changed = channels.shutdown.changed() => {
@@ -158,6 +158,23 @@ impl<S: AsyncRead + AsyncWrite + Unpin> PanelClient<S> {
     /// Próxima mensagem do daemon; `None` quando a conexão fechou.
     pub async fn receive(&mut self) -> io::Result<Option<DaemonMessage>> {
         read_message(&mut self.stream, &mut self.decoder).await
+    }
+}
+
+/// O cliente já fechou (a escrita falhou), mas o que ele mandou antes de fechar ainda vale: a
+/// segunda instância do app manda `Activate` e sai sem esperar o snapshot (no Linux, escrever num
+/// socket já fechado do outro lado dá erro na hora).
+async fn forward_remaining<R>(
+    reader: &mut R,
+    decoder: &mut LineDecoder,
+    requests: &mpsc::UnboundedSender<PanelMessage>,
+) where
+    R: AsyncRead + Unpin,
+{
+    while let Ok(Some(message)) = read_message::<PanelMessage, _>(reader, decoder).await {
+        if !matches!(message, PanelMessage::Hello { .. }) && requests.send(message).is_err() {
+            return;
+        }
     }
 }
 
@@ -253,6 +270,20 @@ mod tests {
                 command: CommandDto::TogglePower
             })
         );
+        assert_eq!(daemon.requests.recv().await, Some(PanelMessage::Activate));
+    }
+
+    #[tokio::test]
+    async fn a_request_from_a_client_that_already_left_is_still_delivered() {
+        // A segunda instância do app manda `Activate` e sai sem esperar o snapshot.
+        let (mut daemon, mut stream) = daemon(Some(snapshot(ConnectionDto::Online)));
+        let mut sent = encode(&PanelMessage::Hello {
+            protocol_version: PROTOCOL_VERSION,
+        });
+        sent.extend(encode(&PanelMessage::Activate));
+        stream.write_all(&sent).await.unwrap();
+        drop(stream);
+
         assert_eq!(daemon.requests.recv().await, Some(PanelMessage::Activate));
     }
 
