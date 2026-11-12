@@ -31,6 +31,7 @@ aes = "0.8"
 aes-gcm = "0.10"
 base64 = "0.22"
 directories = "6"
+futures-util = { version = "0.3", default-features = false }
 hmac = "0.12"
 interprocess = { version = "2", features = ["tokio"] }
 ksni = "0.3"

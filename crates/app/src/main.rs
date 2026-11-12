@@ -18,9 +18,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use elgin_application::config::{HotkeyBindings, Settings, apply_autostart};
-use elgin_application::hotkeys::HotkeyAction;
-#[cfg(windows)]
-use elgin_application::hotkeys::register_hotkeys;
+use elgin_application::hotkeys::{HotkeyAction, register_hotkeys};
 use elgin_application::ports::{AutostartRegistrar, Notifier};
 #[cfg(not(windows))]
 use elgin_application::ports::{Release, UpdateError, UpdateInstaller};
@@ -348,16 +346,21 @@ fn autostart_registrar() -> Result<impl AutostartRegistrar, String> {
         .map_err(|error| format!("pasta de autostart: {error}"))
 }
 
+/// Atalhos globais: `RegisterHotKey` no Windows, KGlobalAccel no KDE (cada um na sua thread).
+#[cfg(windows)]
+type PlatformHotkeys = elgin_platform_windows::WindowsHotkeys;
+#[cfg(target_os = "linux")]
+type PlatformHotkeys = elgin_platform_linux::KdeHotkeys;
+
 /// Registra os atalhos globais do config; os apertados chegam por `sender`. O valor devolvido
 /// precisa ficar vivo enquanto o daemon roda. Atalho inválido ou já usado vai para o log e para
 /// uma notificação.
-#[cfg(windows)]
 fn start_hotkeys(
     bindings: &HotkeyBindings,
     sender: mpsc::UnboundedSender<HotkeyAction>,
     notifier: &mut impl Notifier,
-) -> Option<elgin_platform_windows::WindowsHotkeys> {
-    let started = elgin_platform_windows::WindowsHotkeys::start(move |action| {
+) -> Option<PlatformHotkeys> {
+    let started = PlatformHotkeys::start(move |action| {
         let _ = sender.send(action);
     });
     let mut hotkeys = started
@@ -377,16 +380,6 @@ fn start_hotkeys(
         );
     }
     Some(hotkeys)
-}
-
-/// Os atalhos do KDE chegam na #35; até lá não há nada para manter vivo.
-#[cfg(not(windows))]
-fn start_hotkeys(
-    _bindings: &HotkeyBindings,
-    _sender: mpsc::UnboundedSender<HotkeyAction>,
-    _notifier: &mut impl Notifier,
-) -> Option<()> {
-    None
 }
 
 fn finish(result: Result<DaemonExit, String>, log_path: Option<PathBuf>) -> ExitCode {

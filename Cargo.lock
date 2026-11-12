@@ -1254,7 +1254,9 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "elgin-application",
+ "futures-util",
  "log",
+ "serde",
  "tokio",
  "zbus",
 ]
